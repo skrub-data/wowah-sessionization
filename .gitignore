@@ -21,3 +21,6 @@ _freeze/
 /reports/*
 !/reports/execution_report/
 !/reports/exploration/
+
+# Cached intermediate tables used to redraw the exploration figures
+/reports/exploration/cache/
