@@ -19,6 +19,13 @@ Usage (from the repository root):
     /Users/rcap/venvs/dev/bin/python explore_data.py --data data/wowah_data_2008.parquet
     /Users/rcap/venvs/dev/bin/python explore_data.py --gap-minutes 60 --sample-chars 500
 
+Iterating on the figures does not need the full scan: the monthly table and the
+gap histogram are cached under `<output-dir>/cache/`, so
+
+    /Users/rcap/venvs/dev/bin/python explore_data.py --only-plots --plots characters --show
+
+redraws a single figure from the cache and opens it in a window.
+
 Outputs are printed to the console; the skrub HTML report and the figures are
 written to `--output-dir` (plus a JSON report when the installed skrub version
 supports it).
@@ -51,12 +58,16 @@ REGULAR_MIN_HEARTBEATS = 5
 # schedule, not the North American/European one:
 #   The Burning Crusade: 2007-04-03 (NA/EU: 2007-01-16)
 #   Wrath of the Lich King: 2008-11-18 (NA/EU: 2008-11-13)
-# The third element is the side on which to draw the label, so the text stays
-# inside the axes at the right edge of the plot.
+# The third element is the side the label extends to: "right" means the text
+# ends at the line and grows leftwards, which keeps it inside the figure for
+# releases close to the right edge.
 EXPANSIONS = (
     ("The Burning Crusade", datetime(2007, 4, 3), "right"),
-    ("Wrath of the Lich King", datetime(2008, 11, 18), "left"),
+    ("Wrath of the Lich King", datetime(2008, 11, 18), "right"),
 )
+
+# Vertical room (in points) left above the axes for the two-line labels.
+EXPANSION_LABEL_PAD = 28
 
 
 # %%
@@ -577,12 +588,13 @@ def skrub_reports(lf, n_chars, gap_minutes, output_dir, seed):
 
 
 # %%
-def import_pyplot():
+def import_pyplot(interactive=False):
     """Import matplotlib lazily so the rest of the script runs without it."""
     try:
         import matplotlib
 
-        matplotlib.use("Agg")
+        if not interactive:
+            matplotlib.use("Agg")
         import matplotlib.dates as mdates
         import matplotlib.pyplot as plt
     except ImportError:
@@ -591,22 +603,39 @@ def import_pyplot():
 
 
 def annotate_expansions(ax, start, end, fontsize=8, color="0.35"):
-    """Mark expansion releases that fall inside the plotted time range."""
+    """
+    Mark expansion releases that fall inside the plotted time range.
+
+    The labels sit in the margin above the axes, so they never cover the data
+    or the legend. Callers leave room for them by passing
+    `pad=EXPANSION_LABEL_PAD` to `set_title`.
+    """
     for name, date, side in EXPANSIONS:
         if not start <= date <= end:
             continue
         ax.axvline(date, color=color, linestyle="--", linewidth=1.2, alpha=0.8)
         ax.annotate(
             f"{name}\n{date:%b %Y}",
-            xy=(date, 0.98),
+            xy=(date, 1.0),
             xycoords=("data", "axes fraction"),
-            xytext=(-5 if side == "left" else 5, 0),
+            xytext=(-4 if side == "right" else 4, 4),
             textcoords="offset points",
             ha=side,
-            va="top",
+            va="bottom",
             fontsize=fontsize,
             color=color,
+            annotation_clip=False,
         )
+
+
+def finish_figure(fig, plt, path, dpi, show):
+    """Lay out, write and optionally display a figure, then release it."""
+    fig.tight_layout()
+    fig.savefig(path, dpi=dpi)
+    print(f"wrote {path}")
+    if show:
+        plt.show()
+    plt.close(fig)
 
 
 def format_month_axis(ax, mdates, interval=4):
@@ -615,7 +644,7 @@ def format_month_axis(ax, mdates, interval=4):
     ax.tick_params(axis="x", rotation=45)
 
 
-def plot_gap_histogram(plt, gap_hist, output_dir):
+def plot_gap_histogram(plt, gap_hist, output_dir, dpi=150, show=False):
     """How often does a character disappear for a given amount of time?"""
     fig, ax = plt.subplots(figsize=(12, 4.5))
     ax.bar(
@@ -632,15 +661,11 @@ def plot_gap_histogram(plt, gap_hist, output_dir):
     ax.set_ylabel("heartbeats (log scale)")
     ax.set_title("Heartbeat gaps")
     ax.grid(True, axis="y", alpha=0.3)
-    fig.tight_layout()
 
-    path = output_dir / "heartbeat_gaps.png"
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-    print(f"wrote {path}")
+    finish_figure(fig, plt, output_dir / "heartbeat_gaps.png", dpi, show)
 
 
-def plot_characters_by_month(plt, mdates, monthly, output_dir):
+def plot_characters_by_month(plt, mdates, monthly, output_dir, dpi=150, show=False):
     """Distinct characters seen each month, all vs regular."""
     months = monthly["month"].to_list()
     characters = monthly["characters"].to_list()
@@ -671,19 +696,16 @@ def plot_characters_by_month(plt, mdates, monthly, output_dir):
     format_month_axis(ax, mdates)
     ax.set_xlabel("month")
     ax.set_ylabel("distinct characters")
-    ax.set_title("Characters seen per month")
+    ax.set_title("Characters seen per month", pad=EXPANSION_LABEL_PAD)
     ax.set_ylim(0, max(characters) * 1.18)
+    ax.set_xlim(months[1], months[-1])
     ax.grid(True, alpha=0.3)
     ax.legend(loc="upper left")
-    fig.tight_layout()
 
-    path = output_dir / "characters_by_month.png"
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-    print(f"wrote {path}")
+    finish_figure(fig, plt, output_dir / "characters_by_month.png", dpi, show)
 
 
-def plot_levels_over_time(plt, mdates, monthly, output_dir):
+def plot_levels_over_time(plt, mdates, monthly, output_dir, dpi=150, show=False):
     """Max and median character level per month, with expansion releases."""
     months = monthly["month"].to_list()
     median_level = monthly["median_level"].to_list()
@@ -711,16 +733,13 @@ def plot_levels_over_time(plt, mdates, monthly, output_dir):
     format_month_axis(ax, mdates)
     ax.set_xlabel("month")
     ax.set_ylabel("character level")
-    ax.set_title("Max and median character level by month")
+    ax.set_title("Max and median character level by month", pad=EXPANSION_LABEL_PAD)
     ax.set_ylim(0, 100)
+    ax.set_xlim(months[1], months[-1])
     ax.grid(True, alpha=0.3)
     ax.legend(loc="lower right")
-    fig.tight_layout()
 
-    path = output_dir / "levels_over_time.png"
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-    print(f"wrote {path}")
+    finish_figure(fig, plt, output_dir / "levels_over_time.png", dpi, show)
 
     for cap, name, date in (
         (70, "The Burning Crusade", datetime(2007, 4, 3)),
@@ -740,17 +759,83 @@ def plot_levels_over_time(plt, mdates, monthly, output_dir):
 
 
 # %%
-def plots(gap_hist, monthly, output_dir):
+PLOT_NAMES = ("gaps", "characters", "levels")
+
+
+def plots(gap_hist, monthly, output_dir, names=PLOT_NAMES, dpi=150, show=False):
     """Save the exploration figures."""
-    plt, mdates = import_pyplot()
+    plt, mdates = import_pyplot(interactive=show)
     if plt is None:
         print("\nmatplotlib is not installed, skipping figures")
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    plot_gap_histogram(plt, gap_hist, output_dir)
-    plot_characters_by_month(plt, mdates, monthly, output_dir)
-    plot_levels_over_time(plt, mdates, monthly, output_dir)
+    if "gaps" in names:
+        if gap_hist is None:
+            print("no gap histogram available, skipping heartbeat_gaps.png")
+        else:
+            plot_gap_histogram(plt, gap_hist, output_dir, dpi, show)
+    if {"characters", "levels"} & set(names):
+        if monthly is None:
+            print("no monthly table available, skipping the monthly figures")
+        else:
+            if "characters" in names:
+                plot_characters_by_month(plt, mdates, monthly, output_dir, dpi, show)
+            if "levels" in names:
+                plot_levels_over_time(plt, mdates, monthly, output_dir, dpi, show)
+
+
+def cache_dir(output_dir):
+    """Caches live next to the figures but are not tracked by git."""
+    return output_dir / "cache"
+
+
+def monthly_cache_path(output_dir, data_path):
+    """Cache name includes the data file so different inputs never collide."""
+    return cache_dir(output_dir) / f"monthly_activity_{Path(data_path).stem}.parquet"
+
+
+def gap_hist_cache_path(output_dir, data_path):
+    return cache_dir(output_dir) / f"gap_histogram_{Path(data_path).stem}.parquet"
+
+
+def load_or_compute_monthly(lf, output_dir, data_path, refresh=False):
+    """
+    Reuse the cached monthly table when it exists.
+
+    Iterating on the figures should not require rescanning the 35M-row parquet,
+    so `--only-plots` reads this cache and only falls back to the full scan when
+    it is missing.
+    """
+    path = monthly_cache_path(output_dir, data_path)
+    if path.exists() and not refresh:
+        print(f"\nusing cached monthly activity from {path}")
+        return pl.read_parquet(path)
+    monthly = monthly_activity(lf)
+    cache_dir(output_dir).mkdir(parents=True, exist_ok=True)
+    monthly.write_parquet(path)
+    print(f"cached monthly activity to {path}")
+    return monthly
+
+
+def load_or_compute_gap_hist(lf, output_dir, data_path, refresh=False):
+    """Same idea as `load_or_compute_monthly`, for the heartbeat gap histogram."""
+    path = gap_hist_cache_path(output_dir, data_path)
+    if path.exists() and not refresh:
+        print(f"\nusing cached gap histogram from {path}")
+        return pl.read_parquet(path)
+    gap_hist = gap_analysis(lf)
+    cache_dir(output_dir).mkdir(parents=True, exist_ok=True)
+    gap_hist.write_parquet(path)
+    print(f"cached gap histogram to {path}")
+    return gap_hist
+
+
+def cache_gap_hist(gap_hist, output_dir, data_path):
+    cache_dir(output_dir).mkdir(parents=True, exist_ok=True)
+    path = gap_hist_cache_path(output_dir, data_path)
+    gap_hist.write_parquet(path)
+    print(f"cached gap histogram to {path}")
 
 
 # %%
@@ -772,24 +857,70 @@ def parse_args():
     parser.add_argument("--output-dir", default="reports/exploration")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--no-plots", action="store_true")
+    parser.add_argument(
+        "--only-plots",
+        action="store_true",
+        help="skip the analysis and redraw the figures from the cached tables",
+    )
+    parser.add_argument(
+        "--refresh-cache",
+        action="store_true",
+        help="recompute the cached tables instead of reusing them",
+    )
+    parser.add_argument(
+        "--plots",
+        nargs="+",
+        choices=("all", *PLOT_NAMES),
+        default=["all"],
+        help="which figures to draw (default: all)",
+    )
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help="open the figures in a window instead of only writing them",
+    )
+    parser.add_argument(
+        "--dpi", type=int, default=150, help="resolution of saved figures"
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    lf = pl.scan_parquet(args.data)
     output_dir = Path(args.output_dir)
+    names = PLOT_NAMES if "all" in args.plots else tuple(args.plots)
+
+    if args.only_plots:
+        if args.no_plots:
+            print("--only-plots and --no-plots are mutually exclusive, nothing to do")
+            return
+        lf = pl.scan_parquet(args.data)
+        gap_hist = (
+            load_or_compute_gap_hist(lf, output_dir, args.data, args.refresh_cache)
+            if "gaps" in names
+            else None
+        )
+        monthly = (
+            load_or_compute_monthly(lf, output_dir, args.data, args.refresh_cache)
+            if {"characters", "levels"} & set(names)
+            else None
+        )
+        plots(gap_hist, monthly, output_dir, names, args.dpi, args.show)
+        return
+
+    lf = pl.scan_parquet(args.data)
 
     print(f"Exploring {args.data}")
     overview(lf)
     categoricals(lf)
     per_character(lf)
     gap_hist = gap_analysis(lf)
+    cache_gap_hist(gap_hist, output_dir, args.data)
     session_analysis(lf, args.gap_minutes)
-    monthly = monthly_activity(lf)
+    monthly = load_or_compute_monthly(lf, output_dir, args.data, args.refresh_cache)
     skrub_reports(lf, args.sample_chars, args.gap_minutes, output_dir, args.seed)
     if not args.no_plots:
-        plots(gap_hist, monthly, output_dir)
+        plots(gap_hist, monthly, output_dir, names, args.dpi, args.show)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,8 @@ jupyter-cache = "*"
 churn = "python add_churn.py"
 # Explore the full dataset; writes a skrub HTML report and plots
 explore = "python explore_data.py"
+# Redraw the exploration figures from the cached tables (no full rescan)
+explore-plots = "python explore_data.py --only-plots"
 # Build the DataOps plan on a 10% user sample, evaluate it, and generate the report
 evaluate = "python main.py --dataset 2008"
 evaluate-all = "python main.py --dataset all"
