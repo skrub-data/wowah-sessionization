@@ -18,73 +18,138 @@ def show(*objs):
 ```
 
 In this blog post we will see how we can predict player churn in World of Warcraft 
-(WoW), a subscription-based MMORPG that was released in 2004. More precisely, we are 
+(WoW), a subscription-based MMORPG released in 2004. More precisely, we are 
 interested in predicting a player's behavior in a given month, and decide whether 
 there is a risk that they will stop playing the next month. 
 To do so, we want to train a machine learning model that, given features based 
-on each player and on the overall playerbase, will be able to predict whether 
-player X will stop playing in a given month. 
+on each player's behavior and on the overall playerbase, will be able to predict
+whether player X will stop playing in a given month. 
+
+
+
+::: {.callout collapse="true"}
+### Dependencies
 
 Through the post we will build a full machine learning pipeline: we use  
 polars for dataframe operations; [skrub](https://skrub-data.org/stable/) is used
-for data exploration, feature engineering and constructing the overall execution plan; 
-scikit-learn is imported for the actual ML model; hyperparameter optimization is 
-done using Optuna through skrub's Data Ops. 
+for data exploration, feature engineering and constructing the overall execution
+plan through its [Data Ops framework](https://skrub-data.org/stable/data_ops.html); 
+[scikit-learn](https://scikit-learn.org/stable/index.html) is imported for the
+actual ML model; hyperparameter optimization is done using [Optuna](https://optuna.org)
+through skrub's Data Ops. 
+
+:::
 
 To keep the focus of this post on the process rather than the code, most of the 
-lower-level functions will be hidden in collapsible blocks. This includes much 
-of the pre-processing and feature engineering, although important sections will
-be highlighted as needed. Additionally, some detail on the implementation will
-be omitted from this writeup; for detailed comments and rationale on the code
-refer to the [repository](https://github.com/rcap107/wowah-sessionization).
+lower-level functions will be hidden in collapsible blocks, including much of 
+the pre-processing and feature engineering.
+The entire code is available in this [repository](https://github.com/rcap107/wowah-sessionization).
 
-### The dataset
-We rely on the [World of Warcraft Avatar History](https://qualinet.github.io/databases/world_of_warcraft_avatar_history_dataset/). 
+## The dataset
+We rely on the [World of Warcraft Avatar History](https://qualinet.github.io/databases/world_of_warcraft_avatar_history_dataset/)
+dataset.
 The dataset is built by scanning the game's servers roughly every 10 minutes, and
 logging information about each **user character** in the Horde faction that is
 found online at the timestamp's time. As we have a sequence of timestamps, this 
 lets us track the behavior of players over time. 
 
 ::: {.callout-note}
-#### Expansion dates: the Taiwanese release
+#### Expansions and Taiwanese release
 
-WoWAH was collected on the Taiwanese realm *Light's Hope*, so it follows the
-Taiwan/Hong Kong release schedule rather than the North American/European one.
-*The Burning Crusade* launched there on **3 April 2007** (16 January 2007 in
-NA/EU), and *Wrath of the Lich King* on **18 November 2008** (13 November 2008
-in NA/EU). The data reflects the local timeline: the first Blood Elves, Outland
-zones and characters above level 60 appear on 3 April 2007, and the first Death
-Knights and Northrend zones on 19 November 2008. Time-based features and the
-interpretation of the plots should therefore use these realm-specific dates.
+WoWAH was collected on the Taiwanese server *Light's Hope*, so it follows the
+Taiwan/Hong Kong release schedule rather than the North American/European one: 
+importantly the first expansion (*The Burning Crusade*) launched in April 2007 rather than 
+in January; the second expansion (*Wrath of the Lich King*) released in November 
+2008 in both cases. 
+
+Expansion releases are important events in the dataset, as they introduce new content
+and represent a major influx of new and old players. 
 :::
 
 
-::: {.callout-important}
 
-### Characters and avatars
-Through this write-up, we will use the terms "character" and "avatar" interchangeably:
+#### Players, player characters and avatars
+
+Through this write-up, we will use the terms "character" and "avatar" **interchangeably**:
 both terms will be used to refer to any single player-controlled character that 
 is found online when the server snapshot is taken. 
-
-:::
-
 
 Avatar information includes:
 
 - The avatar's ID (a unique integer ID for anonymization)
 - The ID of the avatar's guild (possibly missing)
 - The avatar level at that moment in time
-- The avatar's race (Blood Elf, Undead, Tauren etc.)
 - The avatar's class (Hunter, Mage, Warlock etc.)
+- The avatar's race (Blood Elf, Undead, Tauren etc.)
 - The avatar's location in the game's world
 
-**Practical observations** 
-The dataset requires some preprocessing before it can be converted to a dataframe, 
-as it is stored in plaintext in a non-standard format. We handle the conversion
-procedure in a [separate script](https://github.com/rcap107/wowah-sessionization/blob/main/src/parse_to_single_table.py),
-so that the rest of the process can use dataframe libraries. We also upload the processed 
-dataset on 
+
+::: {.callout-note collapse="true"}
+#### Parsing the data
+
+The dataset is stored in folders grouped by day and quarter, and logs are stored
+as txt files that contain info about each avatar found online at the given timestamp.
+As the formatting is not standard (not even a csv!), the pre-processing is non-trivial.
+
+Data Ops can still help with this, and indeed we include parsing the files in our
+pipeline. However, for convenience we publish a
+[separate script](https://github.com/rcap107/wowah-sessionization/blob/main/src/parse_to_single_table.py),
+to convert the text files in parquet, and we publish the resulting dataframe on
 [Kaggle: World of Warcraft Avatar History 2006-2009](https://www.kaggle.com/datasets/ryye107/world-of-warcraft-avatar-history).
+
+::: {.columns}
+
+::: {.column}
+
+**Folder structure**
+
+```
+WoWAH
+├── 2006_01_03
+│   ├── 2006-01-01
+│   │   ├── 00-03-56.txt
+│   │   ├── 00-13-43.txt
+│   │   ├── 00-23-48.txt
+│   │   ├── 00-33-48.txt
+│   │   ├── ...
+│   ├── 2006-01-02
+│   ├── ...
+├── 2006_04_06
+├── ...
+```
+
+
+
+:::
+
+::: {.column}
+
+**Content of a single log file**
+
+```
+# head WoWAH/2006_01_03/2006-01-01/00-03-56.txt 
+Persistent_Storage = {
+	[1] = "0, 12/31/05 23:59:46, 1,0, , 5, Orc, Warrior, Durotar, no, 0",
+	[2] = "0, 12/31/05 23:59:46, 1,1, , 9, Orc, Shaman, Durotar, yes, 0",
+	[3] = "0, 12/31/05 23:59:52, 2,2, , 13, Orc, Shaman, Durotar, no, 0",
+	[4] = "0, 12/31/05 23:59:52, 2,3,0, 14, Orc, Warrior, Durotar, no, 0",
+	[5] = "0, 12/31/05 23:59:52, 2,4, , 14, Orc, Shaman, Durotar, yes, 0",
+	[6] = "0, 12/31/05 23:59:52, 2,5, , 16, Orc, Hunter, The Barrens, yes, 0",
+	[7] = "0, 12/31/05 23:59:52, 2,6, , 18, Orc, Warlock, The Barrens, no, 0",
+	[8] = "0, 12/31/05 23:59:52, 2,7, , 17, Orc, Hunter, Silverpine Forest, yes, 0",
+...
+```
+
+
+:::
+
+:::
+
+
+
+
+:::
+
 
 ### A quick exploration of the dataset
 We begin by loading the historical dataset with all the timestamps. To keep the
@@ -117,6 +182,20 @@ churn.
 
 
 ## Modeling player churn
+
+
+::: {.callout-important}
+
+In WoW, a single player may have multiple "player characters" or "avatars". The
+information available in the dataset does not allow us to link a player to their
+avatars, and as such we will treat **each avatar as an independent player**. 
+
+This is reflected in how we model churn: as we do not have access to which player
+is behind each avatar, we assume that **any churned avatar is a churned player**.
+
+:::
+
+
 Modeling user churn is a common application of machine learning models, though 
 the definition of churn is typically business' specific. In general, by "user churn"
 one refers to "a user that does not come back to the service". In the context of 
