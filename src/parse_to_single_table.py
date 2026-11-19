@@ -15,12 +15,21 @@ root_dir = "~/work/sessionization/WoWAH"
 timestamp_pattern = r"\d+/\d+/\d+ \d+:\d+:\d+"
 digits = r"\d+"
 optional_digits = r"\d*"
+# Race and class are always ASCII names (Orc, Blood Elf, Warrior...): records
+# where they are corrupted ("547人") are dropped rather than kept with a bogus
+# value, since race is a fixed per-character feature.
 text_field = r"[A-Za-z\' ]+"
-optional_text_field = r"[A-Za-z\' ]*"
+# Zone names are not restricted to ASCII: later expansions add punctuation
+# ("Auchindoun: Shadow Labyrinth", "Ahn'kahet: The Old Kingdom", "Zul'Drak")
+# and the Taiwanese client sometimes reports them in Chinese ("龍骨荒野").
+# They only need to exclude the characters that structure the record: the
+# comma separating fields and the quotes delimiting it.
+zone_field = r"[^,\"]+"
+optional_zone_field = r"[^,\"]*"
 
 # Combine into full line regex
 line_re = re.compile(
-    rf"^.*\"{digits},\s({timestamp_pattern}),\s({digits}),({digits}),\s*({optional_digits}),\s({digits}),\s({text_field}),\s({text_field}),\s({text_field}),\s({optional_text_field}),\s{digits}\".*$"
+    rf"^.*\"{digits},\s({timestamp_pattern}),\s({digits}),({digits}),\s*({optional_digits}),\s({digits}),\s({text_field}),\s({text_field}),\s({zone_field}),\s({optional_zone_field}),\s{digits}\".*$"
 )
 
 
