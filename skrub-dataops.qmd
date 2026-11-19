@@ -249,6 +249,8 @@ learner.predict(
 
 # Act 2: Dataset and problem
 
+![World of Warcraft original cover](images/World_of_Warcraft.png)
+
 ## What are we here for?  {.smaller}
 - **The dataset**: World of Warcraft Avatar history Dataset [^1]
   - World of Warcraft is a **subscription-based** online videogame.
