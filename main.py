@@ -11,17 +11,12 @@ we only use data from previous months.
 """
 
 # %%
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import polars as pl
-import polars.selectors as cs
 import skrub
-import skrub.selectors as s
-from sklearn.dummy import DummyClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import HistGradientBoostingClassifier as HGB
-from skrub import ApplyToCols, DatetimeEncoder, SessionEncoder, TableVectorizer
-from sklearn.impute import SimpleImputer
+from skrub import SessionEncoder
 
 from add_churn import build_churn_dataset
 from src.parse_to_single_table import list_raw_files, parse_files
@@ -34,8 +29,6 @@ from adding_features import (
     add_lagged_features,
 )
 
-# MIN_DATE = datetime.strptime("2008-01-01", "%Y-%m-%d")
-# MAX_DATE = datetime.strptime("2008-06-30", "%Y-%m-%d")
 # Actual ranges for the full dataset
 MIN_DATE = datetime.strptime("2006-02-01", "%Y-%m-%d")
 # The last split point is October 2008, so the last test month is November: its
@@ -68,6 +61,11 @@ HISTORICAL_END = datetime.strptime("2008-10-31", "%Y-%m-%d")
 # dataset -- so that December's `churn_next` target (which needs January's
 # data to know whether a character is also absent that month) can be
 # computed, and a real prediction can be shown for December.
+# 
+# Note that this is is an infrastructure-level cutoff, used for the sake of the 
+# example. In real life, the model would be trained on e.g. all the months up to
+# October 2008, and the new data would be generated as text files and passed to 
+# the learner.
 UNSEEN_START = datetime.strptime("2008-10-01", "%Y-%m-%d")
 UNSEEN_END = datetime.strptime("2009-01-10", "%Y-%m-%d")
 
