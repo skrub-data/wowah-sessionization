@@ -1,0 +1,145 @@
+---
+title: "Section draft: sessionization"
+format: html
+execute:
+  enabled: false
+---
+
+<!--
+Drop-in replacement for `### 3. What a "session" is` in draft.qmd.
+Kept in its own file so the post can be edited in parallel; nothing here is
+rendered as part of the site (`_quarto.yml` only picks up root-level `*.qmd`).
+Figures referenced: images/session_features.svg, images/session_gap_example.png
+-->
+
+### 3. What a "session" is
+
+A heartbeat record says that an avatar was online at one poll. It does not say
+when the player logged in, when they logged out, or how many separate sittings
+the month contained. Building that from the polls is what `skrub.SessionEncoder`
+does, and the result is the raw material for the session features.
+
+#### The rule
+
+A session is a run of heartbeats in which consecutive beats are at most
+`session_gap` apart. One character's beats are sorted by time, the gap to the
+previous beat is computed, and every gap larger than the threshold opens a new
+session:
+
+```python
+session_encoder = SessionEncoder(
+    split_by="char", timestamp_col="timestamp", session_gap=session_gap * 60
+)
+beats = session_encoder.fit_transform(month_of_heartbeats)
+```
+
+The encoder is stateless and it only *adds* a column (`timestamp_session_id`):
+every row, and its original order, comes back untouched. That is what makes it
+usable inside the feature function instead of as a pre-processing step, and it is
+also why it has to be refit for each month — sessions are a property of the data
+being encoded, not a fixed transformation.
+
+#### The gap is a choice, not a constant
+
+Polls arrive roughly every ten minutes, so a gap of ten minutes means nothing
+and a gap of a few hours means the player left. Where to put the boundary is a
+modelling decision, and it is small enough to tune: `session_gap` is declared as
+a skrub choice and searched along with everything else.
+
+```python
+session_gap = skrub.choose_from([30, 60, 15], name="session_gap")
+```
+
+On the 2008 data, 83.6% of consecutive-heartbeat gaps are within 15 minutes,
+89.8% within 30 and 91.0% within 60, so the three candidates sit in the flat part
+of the distribution rather than cutting through the mass of one-poll gaps. Their
+effect on the features is real but not dramatic: over March 2008 a character-month
+has a median of 4 sessions at any of the three gaps, and the mean falls from 15.2
+at 15 minutes to 12.0 at 60.
+
+Because it is a choice rather than a constant, the search tunes the definition of
+a session exactly like it tunes the learning rate — the boundary of the
+"behaviour" the model sees is part of the search space.
+
+#### What one night looks like
+
+Character 66560 on 2008-03-14, with `session_gap = 30` minutes. The 50m 14s gap
+crosses the threshold and opens a second session; the 20m 18s gap does not:
+
+| beat | gap to previous | session |
+|--------|-----------|:-----:|
+| 21:51:06 | — | 0 |
+| 22:00:50 | 9m 44s | 0 |
+| 22:11:23 | 10m 33s | 0 |
+| 22:21:07 | 9m 44s | 0 |
+| 23:11:21 | 50m 14s | 1 |
+| 23:21:04 | 9m 43s | 1 |
+| 23:41:22 | 20m 18s | 1 |
+| 23:51:05 | 9m 43s | 1 |
+
+The same heartbeats at 15 and 60 minutes give three sessions and one session
+respectively:
+
+![](images/session_gap_example.png){fig-align="center"}
+
+#### From sessions to one row per month
+
+Sessions are only an intermediate: the model consumes one row per
+(character, month), so the sessions are collapsed by `add_session_features`.
+Character 66560 has 9 sessions in March 2008:
+
+| session | start | end | duration |
+|:--:|-----------|-----------|------|
+| 0 | 03-01 09:08 | 03-01 11:38 | 2h 30m |
+| 1 | 03-01 22:28 | 03-01 22:28 | 1m |
+| 2 | 03-05 21:41 | 03-05 22:21 | 39m 45s |
+| 3 | 03-08 10:40 | 03-08 11:31 | 50m 14s |
+| 4 | 03-09 08:41 | 03-09 11:31 | 2h 50m |
+| 5 | 03-09 12:11 | 03-09 13:41 | 1h 30m |
+| 6 | 03-14 21:51 | 03-14 22:21 | 30m 01s |
+| 7 | 03-14 23:11 | 03-14 23:51 | 39m 44s |
+| 8 | 03-15 11:11 | 03-15 11:41 | 29m 57s |
+
+which become the features attached to that character's **April** row:
+
+| feature | value |
+|----------------------------------|-----------|
+| `monthly_num_sessions` | 9 |
+| `monthly_total_session_duration` | 10h 01m |
+| `monthly_avg_session_duration` | 1h 07m |
+| `monthly_std_session_duration` | 58m 02s |
+| `monthly_avg_session_start` | 02:20 |
+| `monthly_avg_session_end` | 03:27 |
+
+Two details are worth spelling out. Session 1 is a single heartbeat, so its
+measured duration would be zero; `get_session_duration` gives it one minute
+instead, so that "logged in briefly" stays distinguishable from "never logged
+in". And the standard deviation is computed on microseconds rather than on the
+`Duration` column, because polars cannot take the std of a duration directly.
+
+#### A second sessionisation, for locations
+
+The same encoder runs again with `split_by=["char", "zone"]`, producing
+`timestamp_session_id_zone`. Those sessions measure how long a character stayed
+in a given zone, not how long they played, and they are what the location
+features are built on: time spent per zone, how much of it lands in "hub" zones
+that everyone visits, and how evenly it is spread. It is a separate pass with a
+separate column, so the two sessionisations never interfere.
+
+```python
+session_encoder_zone = SessionEncoder(
+    split_by=["char", "zone"],
+    timestamp_col="timestamp",
+    session_gap=session_gap * 60,
+    suffix="session_id_zone",
+)
+```
+
+#### The whole path
+
+![](images/session_features.svg){fig-align="center"}
+
+Code: `main.py:151` and `main.py:203` (the two encoders in
+`build_feature_table`), `main.py:282` (`session_gap` as a choice),
+`src/utils.py:18` (`get_session_duration`), `adding_features.py:71`
+(`add_session_features`).
