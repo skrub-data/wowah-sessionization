@@ -155,6 +155,138 @@ Persistent_Storage = {
 
 :::
 
+### 1. Parsing the raw logs
+
+The dataset does not arrive as a table. It is 3.5 GB of text: 138,084 `.txt`
+files spread over 1,082 day folders, nested inside quarterly folders.
+
+```
+WoWAH/2008_10_12/2008-10-01/08-27-57.txt
+     └── quarter ┘ └── day ──┘ └─ file ┘
+```
+
+Each file is a dump of one *poll* of the server, written in a Lua-like syntax
+rather than CSV or JSON:
+
+```lua
+Persistent_Storage = {
+    "0, 06/12/07 03:17:48, 1,46340,53, 26, Orc, Hunter, Razorfen Kraul, , 0", -- [1]
+    "0, 06/12/07 03:17:48, 1,31887, , 10, Orc, Hunter, Durotar, , 0", -- [2]
+}
+```
+
+The quote–comma–quote structure is why this cannot be read with
+`pl.read_csv`: the field names are not in the file, the delimiters are inside a
+string, and the same file also contains a `RoundInfo` block that is not made of
+avatar records at all. A regular expression per line is
+the simplest thing that works, and it is robust to the two different record
+layouts the dataset uses across the years.
+
+One file is not one player: it is one *poll* of the server. The crawler walks
+the list of avatars online and writes a row for each, so a poll takes a few
+minutes to complete and the timestamps inside one file spread over that window:
+on 2008-10-01 the 136 files each cover about four minutes and hold ~300 records.
+Consecutive files start roughly ten minutes apart — the sampling interval
+documented by the dataset authors — and, measured per character, the median gap
+between two heartbeats is 601 seconds. The day totals 22,082 heartbeats, ~5,300
+distinct timestamps and 1,689 characters, about 160 rows per 10-minute poll.
+
+The tree is not uniformly dense either: a day folder holds a median of 141 files
+(1 to 145 in practice), so the raw logs are a regular 10-minute grid rather than
+a stream of events. That is worth keeping in mind for the sessionisation later:
+what looks like a 10-minute gap between two beats is usually just the sampling
+period, not the player stepping away.
+
+Parsing therefore means walking the tree, matching each heartbeat line, keeping
+seven fields, and normalising them:
+
+| kept | type | note |
+|------|------|------|
+| `timestamp` | `Datetime` | `MM/DD/YY HH:MM:SS` → parsed, not string-sorted |
+| `char` | `Int32` | avatar id, cast with `strict=False` |
+| `guild` | `Int32` | anonymous guild id; an empty field becomes `null` |
+| `level` | `Int32` | cast with `strict=False` |
+| `race` | `String` | Orc, Tauren, Blood Elf… |
+| `charclass` | `String` | Warrior, Mage… |
+| `zone` | `String` | Durotar, The Barrens… |
+
+The remaining columns are dropped. The dataset documentation names all eleven
+fields: dummy, query time, query sequence number, avatar id, guild, level, race,
+class, zone, and two more dummies. The first field is `0` on every line of the
+archive and the last is `0` too, so neither carries information. The
+second-to-last is the interesting one: in the 2006 files it is a `yes`/`no` flag,
+and from 2007 onwards it is the class name in upper case (`HUNTER`) or empty —
+the same information as `charclass` in a different encoding, so it adds nothing
+once `charclass` is kept.
+
+::: {.callout-note collapse="true"}
+#### What the regex silently drops
+
+The pattern only accepts ASCII letters, apostrophes and spaces in the text
+fields, so some heartbeats never make it into the table. Measured on random
+samples of 80 files per quarter:
+
+| quarter | heartbeats | parsed | dropped | main cause |
+|---------|-----------:|-------:|--------:|------------|
+| 2006-01 | 22,264 | 99.76% | 0.24% | corrupted race (`373族`) |
+| 2006-07 | 16,231 | 99.75% | 0.25% | same |
+| 2007-01 | 15,746 | 99.93% | 0.07% | same |
+| 2007-04 | 28,315 | 95.00% | 5.00% | zone names |
+| 2008-01 | 25,325 | 97.26% | 2.74% | zone names |
+| 2008-10 | 18,426 | 96.54% | 3.46% | zone names |
+
+The regression is sharp and it has a date. Until early 2007 the only losses are
+corrupted race fields. From the Burning Crusade onwards the zone names start
+containing punctuation the pattern rejects (`Auchindoun: Shadow Labyrinth`,
+`Coilfang: The Slave Pens`, `Ahn'kahet: The Old Kingdom`, `Zul'Drak`), and with
+Wrath of the Lich King zones arrive in Chinese (`龍骨荒野`, `未知`). From 2007-04
+onwards between 3% and 5% of all heartbeats are lost.
+
+This is not harmless. The lost zones are ordinary dungeons and open-world areas,
+not exotic edge cases, so a character who spent an evening inside `Auchindoun`
+looks like they were offline — exactly the kind of hole the session features and
+the churn label are built on. In the 2008-10 sample the dropped beats are spread
+over 26 of the ~166 zones that appear.
+
+Relaxing the text fields to `[^,]+` and keeping the zone as a string recovers
+997 of the 1,017 dropped heartbeats in that sample; the 20 that remain are the
+records whose *race* field is corrupted. The strict pattern looks like a leftover
+from the CSV-writing version of the script, where a comma inside a field would
+have broken the output file.
+
+:::
+
+Because a heartbeat table has to be rebuilt for every new set of files, the
+parser is not a one-off script but a function of the file list:
+`parse_files(file_paths)` returns a typed `DataFrame`. That is what lets
+`load` in `main.py` be a node of the plan, so refitting on the historical files
+and predicting on held-out files run the *same* parsing code on different
+inputs, instead of depending on a parquet someone generated earlier.
+
+Two details make that practical:
+
+- `process_single_file` parses one file; `parse_files` fans the work out over
+  `ProcessPoolExecutor`. On the machine used for this post, a full run of the
+  138k files takes about a minute, and `executor.map` preserves the file order,
+  so the resulting table is deterministic.
+- `list_raw_files(root_dir, start_date, end_date)` selects files by the **day**
+  folder, not the quarterly one. That precision is required because the split
+  between historical and held-out data is a monthly boundary, and a quarter
+  folder such as `2008_10_12` spans October, November and December: filtering
+  on the folder name would either leak December into training or drop October
+  from it. The two selections overlap on purpose — October 2008 is in both — so
+  the last training month can seed the features for the first scored month.
+  Counting the files: 132,042 in the historical set, 10,058 in the held-out set,
+  4,016 shared, 138,084 in total.
+
+Code: `src/parse_to_single_table.py:22` (`line_re`),
+`src/parse_to_single_table.py:33` (`process_single_file`),
+`src/parse_to_single_table.py:75` (`PARSED_COLUMNS`),
+`src/parse_to_single_table.py:78` (`list_raw_files`),
+`src/parse_to_single_table.py:104` (`parse_files`),
+`main.py:246` (`load`), `main.py:312` (`get_env`).
+
+
 
 ### A quick exploration of the dataset
 We begin by loading the historical dataset with all the timestamps. To keep the
@@ -569,40 +701,6 @@ training set lowers the scores on the characters that are still active.
 **Work in progress.** The sections below are an outline of material that exists
 in the code but is not yet in the post. Each entry lists what to cover, where it
 lives in the code, and a figure that would help. Nothing here is final prose.
-:::
-
-### 1. Parsing the raw logs
-
-Currently the parsing step is a single collapsible callout (see "Parsing the
-data") that links to the script. It never explains what the parser actually does,
-which matters because the format is not a CSV and the parsing is a node of the
-plan rather than a pre-processing step.
-
-- The `Persistent_Storage = { [n] = "..." }` record format, and why a regex
-  parser is needed.
-- The 7 fields the parser keeps per record (timestamp, avatar id, guild, level,
-  race, class, zone) and the ones it discards.
-- `process_single_file` / `worker_wrapper`: the `ProcessPoolExecutor` pool, and
-  why `executor.map` is used (it preserves file order, so the table is
-  deterministic).
-- `parse_files` returning a typed `DataFrame` instead of writing CSV, so the same
-  function can be a plan node. Note the casts: `char`, `guild` and `level` are
-  parsed as strings and then cast, with `strict=False`.
-- `list_raw_files` filtering on the `YYYY-MM-DD` **day** folder rather than the
-  quarterly folder, and why that precision is required to split historical from
-  held-out data on a monthly boundary.
-
-Code: `src/parse_to_single_table.py:33` (`process_single_file`),
-`src/parse_to_single_table.py:67` (`worker_wrapper`),
-`src/parse_to_single_table.py:78` (`list_raw_files`),
-`src/parse_to_single_table.py:104` (`parse_files`).
-
-::: {.callout-note}
-**Figure placeholder** — `images/TODO-parse-pipeline.png`
-
-A left-to-right flow: `data/raw/WoWAH/YYYY_MM_DD/YYYY-MM-DD/HH-MM-SS.txt`
-→ regex parse → typed row → concat → `DataFrame`. Annotate the quarterly vs. day
-folder distinction, since that is the non-obvious part.
 :::
 
 ### 2. Downsampling by character
