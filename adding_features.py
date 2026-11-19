@@ -169,9 +169,18 @@ def add_player_rarity(df):
 
     The "in_hub" column tracks the fraction of time a player spends in a zone that
     is marked as "hub".
+
+    The zone-level columns describe the *content* a player is doing rather than
+    their own progress: "max_zone_level" and "mean_zone_level" are the average
+    level of the characters seen in each zone, and "frac_endgame" is the share of
+    visits to zones whose average level is 60 or above. A level-70 character
+    grinding starter zones reads as at-cap by level but as unprogressed here,
+    which is the signature that precedes churn. These are measured on the same
+    heartbeat rows as the rarity columns, so they are heartbeat-weighted.
     """
     rarity = pl.col("rarity")
     is_hub = pl.col("is_hub")
+    zone_level = pl.col("zone_avg_level")
     df_users_rarity = (
         df.lazy()
         .select(
@@ -184,6 +193,12 @@ def add_player_rarity(df):
                 )
                 / is_hub.count().over("char")
             ).alias("in_hub"),
+            zone_level.max().over("char").alias("max_zone_level"),
+            zone_level.mean().over("char").alias("mean_zone_level"),
+            (
+                zone_level.ge(60).sum().over("char")
+                / zone_level.count().over("char")
+            ).alias("frac_endgame"),
         )
     ).unique("char")
     return df_users_rarity

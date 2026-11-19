@@ -106,7 +106,7 @@ time spent in hubs is a weaker signal on its own than time spent out of them.
 
 #### Per-character aggregates
 
-`add_player_rarity` reduces a character's visits to three numbers:
+`add_player_rarity` reduces a character's visits to six numbers:
 
 ```python
 df.lazy().select(
@@ -114,6 +114,11 @@ df.lazy().select(
     rarity.max().over("char").alias("max_rarity"),
     rarity.mean().over("char").alias("mean_rarity"),
     (is_hub.sum().over("char") / is_hub.count().over("char")).alias("in_hub"),
+    zone_level.max().over("char").alias("max_zone_level"),
+    zone_level.mean().over("char").alias("mean_zone_level"),
+    (zone_level.ge(60).sum().over("char") / zone_level.count().over("char")).alias(
+        "frac_endgame"
+    ),
 ).unique("char")
 ```
 
@@ -124,11 +129,26 @@ For character 66560 in March:
 | `max_rarity` | 3.19 | the rarest place they went was Wailing Caverns |
 | `mean_rarity` | 1.55 | on average, a fairly ordinary zone |
 | `in_hub` | 0.63 | 63% of their visits were to a hub |
+| `max_zone_level` | 68.5 | the highest-level content they touched was near cap |
+| `mean_zone_level` | 47.1 | on average, mid-level content |
+| `frac_endgame` | 0.46 | 46% of their visits were to zones averaging level 60+ |
 
 `max_rarity` is the one that carries level information: a character whose rarest
 visit is a level-70 raid has clearly progressed further than one who never left
 the starting zones. `in_hub` is meant to capture the opposite — how much of the
-month was spent idling in a capital rather than out in the world. The aggregates
+month was spent idling in a capital rather than out in the world.
+
+The three zone-level columns measure something rarity cannot: the *content* a
+character is doing, as opposed to their own progress. `max_zone_level` and
+`mean_zone_level` are the average level of the characters seen in each zone, and
+`frac_endgame` is the share of visits to zones averaging level 60 or above. The
+distinction matters because a level-70 character grinding starter zones reads as
+at-cap by their own level but as unprogressed here — which is the signature that
+precedes churn. The two are only weakly related: across March 2008 the
+correlation between `max_rarity` and `max_zone_level` is 0.43, so they are not
+duplicates of each other.
+
+The aggregates
 are taken with `.over("char")` on the **heartbeat** table, not on the visit
 table, so each number is a mean over heartbeats. Since polls arrive every ten
 minutes, that is very nearly a time average, but not exactly: a visit is
@@ -165,13 +185,18 @@ exactly at 0 — of whom all but 72 visited a single non-hub zone in the entire
 month, which makes the coefficient degenerate rather than informative. A further
 3,178 characters (37.7% of the month) never left a hub zone at all and get no
 coefficient, so the left join leaves `gini` null for them. Between the two, only
-about 55% of the month's characters have a Gini value that means anything, which
-is worth knowing before reading much into the feature. For character 66560 the coefficient is 0.56 over non-hub
-zones, and 0.44 if the hubs are included.
+62% of the month's characters have a Gini value that means anything.
 
-Since `add_gini=True` is hard-coded in `make_data_op`, the Gini column is always
-present when the location features are on; `use_location` is the switch that
-turns the whole block off.
+**This column is no longer used.** It is still in the code, but
+`make_data_op` now passes `add_gini=False`. The reason is that the coefficient is
+mostly a proxy for how many zones a character visited: it is bounded above by
+$(n-1)/n$, so it rises mechanically with $n$, and the correlation between the two
+is 0.73. Within zone-count strata it is at chance — for characters who visited
+exactly two non-hub zones the AUC against churn is 0.510, for three it is 0.506 —
+and it adds nothing to a model that already knows the zone count. It also cost
+1.4 s of the 1.6 s location block, because the coefficient has to run through
+`map_groups`, one Python call per character, which is where polars stops being
+able to vectorise.
 
 #### The whole picture
 
@@ -183,22 +208,50 @@ rarity *is* a function of the visitor count, and the hubs are simply the right
 end of it. On the right, the distribution of per-character Gini, with the spike
 at 0 standing for the characters who stayed in one non-hub zone all month.
 
+#### Does the block earn its place?
+
+Yes, but only after the change above. Evaluated with the pipeline's own
+`Splitter` — an expanding window that trains on every month up to `split_point −
+1` and tests on `split_point + 1`, with the gap month dropped because its target
+needs the test month's data — over the eight splits available in 2008:
+
+| location features | mean ΔAUC | wins |
+|---|---:|---:|
+| `gini` alone | −0.0002 | 3/8 |
+| the three rarity columns alone (as shipped before) | −0.0089 | 3/8 |
+| rarity + `gini` | −0.0093 | 4/8 |
+| rarity + zone level (six columns, as shipped now) | **+0.0085** | **8/8** |
+| rarity + zone level + `gini` | +0.0071 | 8/8 |
+
+The old three-column block was actively harmful on average: `in_hub` and the
+rarity pair are largely re-expressions of how much a character played, which the
+general features already carry. Adding the zone-level columns is what turns the
+block from a liability into a consistent gain. The worst split for the old block
+is the last one (−0.063), where the target month is November and the January 2009
+logs are truncated; excluding it, the old block is flat (−0.0011) and the new one
+is +0.0058.
+
+The Gini row is the direct answer to whether it should stay: on its own it is
+indistinguishable from noise, and adding it to the six-column block *costs*
+0.0014 of AUC on average (0.0071 against 0.0085) while winning the same 8/8
+splits. It is not that the coefficient is useless in principle — it is that
+whatever it measures is already covered by the zone count and the zone-level
+columns, and the extra column only gives the model another noisy axis to split
+on.
+
 This block is also by far the most expensive part of the feature table, which is
 why it is a choice at all. On one month of data, the three general feature
 functions (sessions, monthly player aggregates, class aggregates) take about
-0.1 s, while the zone pass takes 0.23 s to encode and 1.6 s to turn into
-features — roughly fifteen times the cost of everything else combined. Almost
-all of it is the Gini: zone rarity costs 0.04 s and the rarity aggregates
-0.06 s, while `add_gini_features` alone takes 1.4 s, because the coefficient has
-to run through `map_groups`, one Python call per character, and that boundary
-is where polars stops being able to vectorise:
+0.1 s, while the zone pass takes 0.22 s to encode and 0.14 s to turn into
+features. Dropping the Gini is what makes it cheap: with `add_gini=True` the same
+step took 1.6 s.
 
 ```python
 use_location = skrub.choose_bool(name="location_features")
 ```
 
 Code: `adding_features.py:120` (`get_zone_rarity`), `adding_features.py:162`
-(`add_player_rarity`), `adding_features.py:210` (`gini`),
-`adding_features.py:225` (`get_location_gini`), `adding_features.py:275`
+(`add_player_rarity`), `adding_features.py:225` (`gini`),
+`adding_features.py:240` (`get_location_gini`), `adding_features.py:290`
 (`add_location_features`), `main.py:203` (the zone encoder) and `main.py:283`
 (`use_location`).

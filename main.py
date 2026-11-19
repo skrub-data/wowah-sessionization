@@ -292,7 +292,10 @@ def make_data_op(load_fraction=0.1, return_x=False):
         build_feature_table,
         session_gap=session_gap,
         use_location=use_location,
-        add_gini=True,
+        # The Gini coefficient is off: measured against the pipeline's own
+        # time-based splitter it adds nothing over the rarity and zone-level
+        # columns, and it costs 1.4s of the 1.6s location block.
+        add_gini=False,
         lags=lags,
     )
     all_features = X.skb.apply_func(add_features, feature_table)
