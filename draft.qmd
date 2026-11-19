@@ -155,9 +155,8 @@ Persistent_Storage = {
 We begin by loading the historical dataset with all the timestamps. To keep the
 examples fast, this post uses the year 2008 (about 10.8M rows, 37k characters); the
 repository can also run everything on the full 2006-2009 dataset (35.6M rows, 90k
-characters). We use 
-`.scan_parquet()` because it returns a `LazyFrame`, which we want to use as much
-as possible through the code for query optimization. 
+characters). We use `.scan_parquet()` because it returns a `LazyFrame`, which
+we want to use as much as possible through the code for query optimization. 
 
 ```{python}
 from skrub import TableReport
@@ -184,6 +183,17 @@ churn.
 ## Modeling player churn
 
 
+
+Modeling user churn is a common application of machine learning models, though 
+the definition of churn is typically business-specific. In general, by "user churn"
+one refers to "a user that does not come back to the service for a certain length 
+of time".
+
+In the context of this example, churn refers to **those avatars that are not found
+online for at least two consecutive months**: we consider those characters as 
+users that stopped playing, and consequently suspended their subscription.  
+
+
 ::: {.callout-important}
 
 In WoW, a single player may have multiple "player characters" or "avatars". The
@@ -195,12 +205,6 @@ is behind each avatar, we assume that **any churned avatar is a churned player**
 
 :::
 
-
-Modeling user churn is a common application of machine learning models, though 
-the definition of churn is typically business' specific. In general, by "user churn"
-one refers to "a user that does not come back to the service". In the context of 
-this example, churn refers to **those characters that are not found online after
-a certain amount of time**, and that suspended their subscription.  
 As we do not have access to the actual subscription data, we assume that a player 
 has suspended their subscription when they stop playing for **two consecutive 
 months**. A single missing month is more likely a break than a cancellation, so
@@ -220,10 +224,13 @@ we derive two columns:
 
 **Our objective**
 
-Given a month (e.g., June), we want to use all the data up to the last day of the 
-previous month (all months until May included) to predict whether a user will have 
-churned as of July (i.e., their `has_played` flag will be `False` both in June and 
+Given a month (e.g., **June**), we want to use all the data up to the last day of the 
+previous month (all months until **May** included) to predict whether a user will have 
+churned as of **July** (i.e., their `has_played` flag will be `False` both in June and 
 in July).
+
+In other words, a row at month M means **"act during month M, using data up to the end of M-1, to predict absence in M and M+1."**
+
 
 :::
 
@@ -235,18 +242,21 @@ Note that, in the diagram, a character that is absent in the target month has on
 churned if it was also absent in the "gap month".
 
 ::: {.callout-warning}
-#### Why the target is shifted
+#### Why we're predicting one month in the future
 
-It is tempting to use `churn` itself as the target of the June row. However, the 
-features of the June row are built from May, and `churn` for June is only true if the 
-character was absent in May: any character with activity in May would be labeled 
-"not churned" by construction, and the model would learn that from the missing 
-values alone. Cross-validation scores looked excellent (ROC AUC around 0.95) for 
-the wrong reason. Shifting the target one month forward removes the shortcut.
+Given the month of **June**, we may be tempted to use `churn` at this month as the
+target. However, June's features are built from **May**, and `churn` for June _is 
+only true if the character is absent in May_: any character that is active in May
+is labeled as "not churned" by construction, and the model would learn that just by
+looking at the missing values. This would produce overly optimistic results. 
+
+Shifting the target to **July** avoids this problem: in _June_ we want to predict
+whether a player is active in _July_ using data from and up to _May_.
+
 :::
 
 One caveat with this modeling strategy is that we are working with 
-historical data, so we cannot actually apply said incentive and observe whether 
+**historical data**, so we cannot actually apply said incentive and observe whether 
 it has an impact like in a typical [A/B test](https://en.wikipedia.org/wiki/A/B_testing). 
 
 ### Building the churn dataset
@@ -379,8 +389,8 @@ worth spending some time understanding the scenario we are in.
 
 The main factor that complicates this scenario is the fact that we are dealing
 with sequential data points, which are therefore not independent of each other: 
-the position of a player at a time T is strongly correlated with their position
-at time T+1. 
+*the position of a player at a time T is strongly correlated with their position
+at time T+1*. 
 
 ### Building a custom splitter
 For this reason, we need to use a splitter that returns sequential splits. A 
@@ -480,6 +490,9 @@ show(filter_df_by_month, build_feature_table, add_features)
 
 ::: {.callout-tip collapse="true"}
 #### Loading and downsampling the file (click to expand)
+The `load` function uses a parser for the raw `.txt` logs. Parsing itself should
+be a node of the graph
+
 `load` parses the raw `.txt` heartbeat logs itself -- parsing is a node of the
 plan, not a separate pre-processing script -- then downsamples the result to
 reduce execution time. We need to be deliberate with how we sample the data:
@@ -538,4 +551,335 @@ The evaluation includes characters that were already absent in the previous mont
 predicting that they will remain absent is easy. A stricter evaluation would only 
 score the characters that were still active, which are the ones that could 
 actually be retained.
+:::
+
+## Outline: subjects still to cover
+
+::: {.callout-warning}
+**Work in progress.** The sections below are an outline of material that exists
+in the code but is not yet in the post. Each entry lists what to cover, where it
+lives in the code, and a figure that would help. Nothing here is final prose.
+:::
+
+### 1. Parsing the raw logs
+
+Currently the parsing step is a single collapsible callout (see "Parsing the
+data") that links to the script. It never explains what the parser actually does,
+which matters because the format is not a CSV and the parsing is a node of the
+plan rather than a pre-processing step.
+
+- The `Persistent_Storage = { [n] = "..." }` record format, and why a regex
+  parser is needed.
+- The 7 fields the parser keeps per record (timestamp, avatar id, guild, level,
+  race, class, zone) and the ones it discards.
+- `process_single_file` / `worker_wrapper`: the `ProcessPoolExecutor` pool, and
+  why `executor.map` is used (it preserves file order, so the table is
+  deterministic).
+- `parse_files` returning a typed `DataFrame` instead of writing CSV, so the same
+  function can be a plan node. Note the casts: `char`, `guild` and `level` are
+  parsed as strings and then cast, with `strict=False`.
+- `list_raw_files` filtering on the `YYYY-MM-DD` **day** folder rather than the
+  quarterly folder, and why that precision is required to split historical from
+  held-out data on a monthly boundary.
+
+Code: `src/parse_to_single_table.py:33` (`process_single_file`),
+`src/parse_to_single_table.py:67` (`worker_wrapper`),
+`src/parse_to_single_table.py:78` (`list_raw_files`),
+`src/parse_to_single_table.py:104` (`parse_files`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-parse-pipeline.png`
+
+A left-to-right flow: `data/raw/WoWAH/YYYY_MM_DD/YYYY-MM-DD/HH-MM-SS.txt`
+→ regex parse → typed row → concat → `DataFrame`. Annotate the quarterly vs. day
+folder distinction, since that is the non-obvious part.
+:::
+
+### 2. Downsampling by character
+
+`load` samples a fraction of characters and keeps **all** their rows. The post
+mentions this in one sentence inside a collapsible block but never says why
+row-level sampling would be wrong.
+
+- Why sampling rows breaks the monthly timeline (a character would appear to have
+  gaps that are sampling artefacts, not churn).
+- `sample_by_user` and the fixed `seed=42`.
+- The cost/accuracy trade-off: 10% of characters by default, `--fraction 1` for
+  everything.
+
+Code: `src/utils.py:3` (`sample_by_user`), `main.py:248` (`load`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-sampling.png`
+
+Two side-by-side panels over the same month: (a) row-level sample, showing
+characters with spurious missing months; (b) character-level sample, showing
+complete timelines for fewer characters. Same number of rows in both.
+:::
+
+### 3. What a "session" is
+
+The post says `SessionEncoder` "groups consecutive heartbeats into sessions" but
+never defines the boundary, which is a tuned hyperparameter.
+
+- A session ends after `session_gap` minutes without a heartbeat; the default is
+  30, and `{15, 30, 60}` are the tuned options.
+- Heartbeats arrive roughly every 10 minutes, so the gap choice is not arbitrary
+  — show the gap histogram.
+- `get_session_duration`: sessions that start and end on the same heartbeat get a
+  duration of 1 minute rather than 0, so that "logged in briefly" is
+  distinguishable from "never logged in".
+- The zone-session encoder (`split_by=["char", "zone"]`) used for location
+  features is a *second*, independent sessionisation.
+
+Code: `main.py:128` (`build_feature_table`, `session_gap`),
+`src/utils.py:18` (`get_session_duration`),
+`adding_features.py:71` (`add_session_features`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-session-gap.png`
+
+Reuse `reports/exploration/heartbeat_gaps.png` (already generated by
+`explore_data.py --plots gaps`), with vertical lines at 15/30/60 minutes to show
+where the candidate thresholds fall relative to the gap distribution.
+:::
+
+### 4. Location features in depth
+
+The post lists location features in one bullet. They are the most involved part
+of the feature engineering and deserve their own subsection.
+
+- **Zone rarity**: `log(N / n_v)` where `N` is the number of unique characters and
+  `n_v` the number of unique visitors to the zone. High rarity = few visitors.
+- **Hub definition**: a zone is a hub if its rarity is below the 10th percentile.
+- **Per-character aggregates**: `max_rarity`, `mean_rarity`, and `in_hub` (the
+  fraction of a character's zone-sessions spent in hubs).
+- **Gini coefficient** over time spent per zone: low Gini = spread evenly across
+  many zones ("casual explorer"), high Gini = concentrated in few zones
+  ("grinding"). Note that `add_gini=True` is hard-coded in `make_data_op`, so it
+  is always on when location features are on.
+- Why this block is optional: it is the slowest part of the feature table.
+
+Code: `adding_features.py:120` (`get_zone_rarity`),
+`adding_features.py:162` (`add_player_rarity`),
+`adding_features.py:210` (`gini`),
+`adding_features.py:225` (`get_location_gini`),
+`adding_features.py:275` (`add_location_features`),
+`main.py:295` (`add_gini=True`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-zone-rarity.png`
+
+Scatter of zones: x = number of unique visitors (log scale), y = rarity, with the
+10th-percentile hub threshold drawn as a horizontal line and the hub zones
+labelled. A second small panel: distribution of per-character Gini, split by
+whether the character churned.
+:::
+
+### 5. The model and the encoder
+
+The post never names the model. It jumps from "the plan" to a results table.
+
+- `TableVectorizer` on the assembled feature table: what it does to the
+  categorical columns (race, class, most-frequent zone, guilds) and to the
+  duration columns.
+- `HistGradientBoostingClassifier` as the estimator, and why a gradient-boosted
+  tree model suits this table (mixed types, nulls, non-linearities, no scaling
+  needed).
+- The single tuned model hyperparameter: `learning_rate` in `[0.1, 0.5]`,
+  log-uniform.
+- `roc_auc` as the scoring function, and why AUC rather than accuracy given the
+  base rate.
+
+Code: `main.py:299` (`TableVectorizer`), `main.py:301` (`HGB`),
+`main.py:302` (`with_scoring`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-model-graph.svg`
+
+The skrub plan graph for `make_data_op`, rendered with
+`data_op.skb.draw_graph()`. Note that `images/model_graph.svg` in the repo is a
+stale graph from a different project (`read_csv`, `LogisticRegression`) and must
+not be reused.
+:::
+
+### 6. Base rate and class balance
+
+The post gives AUC values without saying what a trivial model would score.
+
+- `churn_next` is true for about 54.5% of rows in the 2008 churn dataset
+  (221,237 rows, 11 months), and `has_played` is true for about 41%.
+- So AUC 0.5 is genuinely chance, but accuracy 0.55 is also achievable by
+  predicting "churned" always. Say which metric is being reported and why.
+- The distribution of `churn_next` by month, to show that the base rate drifts.
+
+Code: `add_churn.py:181` (`build_churn_dataset`), `main.py:302` (`roc_auc`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-base-rate.png`
+
+Two panels: (a) monthly `churn_next` rate as a line over the test months;
+(b) the same with the AUC curve overlaid on a secondary axis, so the reader can
+see whether score changes track base-rate changes.
+:::
+
+### 7. The "already absent" evaluation caveat
+
+There is a callout at the end noting that characters already absent in the
+previous month are easy to score. It is never quantified, and the code has no
+switch for it.
+
+- Split the test set into "active last month" and "already absent last month" and
+  report AUC separately.
+- This is the number that matters operationally: you can only retain characters
+  who are still around.
+- Note that the code currently has no option to restrict scoring this way, so
+  this would be a new evaluation path.
+
+Code: `add_churn.py:143` (`churn` definition), `main.py:353` (`evaluate`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-auc-split.png`
+
+Grouped bar chart per test month: AUC on all rows vs. AUC on rows with
+`prev_played == True`. The gap between the two bars is the point of the section.
+:::
+
+### 8. Hyperparameter tuning
+
+`Dependencies` mentions Optuna, and `random_search` exists, but the post only ever
+shows default hyperparameters.
+
+- `random_search`: Optuna backend, `n_iter=16`, `n_jobs=-1`, results persisted to
+  `wowah_churn_study.db`.
+- The search space: `session_gap`, `location_features`, `lags`, `learning_rate`.
+- What the search actually found, and whether the tuned plan beats the default.
+- The honest caveat: tuning on the same folds you report is optimistic.
+
+Code: `main.py:342` (`random_search`), `main.py:282` (`choose_from` /
+`choose_bool` / `choose_float`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-optuna.png`
+
+Optuna's parallel-coordinate plot or parameter-importance bar chart from
+`wowah_churn_study.db`, plus a table of best-vs-default AUC per test month.
+:::
+
+### 9. Held-out evaluation on unseen files
+
+This is the most distinctive part of the design and it is entirely absent from
+the post.
+
+- `HISTORICAL_END = 2008-10-31` vs. `UNSEEN_START = 2008-10-01` /
+  `UNSEEN_END = 2009-01-10`: the two windows overlap by one month on purpose, so
+  that November's features (built from October) are not degenerate.
+- `predict_unseen` fits the whole graph — parsing included — on the historical
+  files, then calls `.predict()` with the unseen environment. The same code path
+  parses files it has never seen.
+- Why January 2009 stops on the 10th, and why that caps the last usable target at
+  December 2008.
+- The row-order trick used to recover `(char, month)` for each prediction.
+
+Code: `main.py:60` (`HISTORICAL_END`), `main.py:71` (`UNSEEN_START`),
+`main.py:72` (`UNSEEN_END`), `main.py:312` (`get_env`),
+`main.py:359` (`predict_unseen`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-train-unseen-timeline.png`
+
+A single horizontal timeline, 2006-01 → 2009-01, with three bands: "train"
+(2006-01 → 2008-10), the one-month overlap (2008-10), and "unseen"
+(2008-10 → 2009-01). Mark the incomplete January 2009 tail with a hatch. This
+replaces the ambiguity in the current `diagram-months-churn.png`.
+:::
+
+### 10. Reading the execution report
+
+`main.py` writes a skrub report to `reports/execution_report/` on every
+`evaluate()` run. The post never mentions it, but it is the easiest way for a
+reader to inspect the plan.
+
+- What the report contains: the plan graph, per-node timing, the fitted
+  transformer state.
+- How to open it (`reports/execution_report/index.html`).
+- Which node dominates the runtime (expected: the location features).
+
+Code: `main.py:415` (`data_op.skb.report`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-execution-report.png`
+
+A screenshot of `reports/execution_report/index.html` with the slowest node
+highlighted, plus a small table of per-node wall time.
+:::
+
+### 11. Data quality and quirks
+
+Several decisions in the code are responses to data problems that the post never
+mentions.
+
+- `guild == -1` means "no guild" and is mapped to null in `make_data_op`.
+- Duplicate heartbeats at the same timestamp (visible as the `0s (duplicate)` bar
+  in the gap histogram).
+- The level cap moves: 60 → 70 in April 2007, 70 → 80 in November 2008. Any
+  level-based feature is therefore not comparable across the whole window.
+- Expansion releases are a confounder: they cause both an influx of characters
+  and a change in behaviour. The post mentions them but never uses them.
+
+Code: `main.py:269` (`guild == -1`), `explore_data.py:64` (`EXPANSIONS`).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-levels-and-expansions.png`
+
+Reuse `reports/exploration/levels_over_time.png` (already generated by
+`explore_data.py --plots levels`). It already annotates both expansions and shows
+the two cap changes.
+:::
+
+### 12. Reproducing the post
+
+There is no "how to run this" section.
+
+- The `pixi` tasks and the `main.py` CLI: `--env {train,unseen,predict-unseen}`
+  and `--fraction`.
+- `explore_data.py` for the exploration figures.
+- Determinism: `seed=42` in `sample_by_user`; the model itself is not seeded, so
+  AUC varies by a few hundredths between runs (already noted in the results
+  section).
+- Runtime expectations, so a reader knows whether 10% is a reasonable default.
+
+Code: `main.py:386` (argparse), `src/utils.py:10` (`seed=42`),
+`explore_data.py:842` (`parse_args`).
+
+::: {.callout-note}
+**Figure placeholder** — none. A short code block with the three commands is
+enough.
+:::
+
+### 13. Limitations and what would come next
+
+The post ends on the results table. A closing section would make the write-up
+more honest and more useful.
+
+- Right-censoring: characters still active at the end of the window have no
+  observed churn, and the last months are dropped entirely.
+- Avatars are treated as players; a player with several avatars is counted
+  several times, and churn on one avatar is not churn on the player.
+- No causal claim: the post cannot measure whether an incentive would have
+  worked, only who is at risk.
+- The monthly granularity is a modelling choice; weekly would give more folds but
+  a noisier label.
+- A survival-analysis framing (time-to-churn) would use the censored rows that
+  the current setup throws away.
+
+Code: `add_churn.py:148` (`churn_next` nulling), `add_churn.py:190` (dropping
+null targets).
+
+::: {.callout-note}
+**Figure placeholder** — `images/TODO-censoring.png`
+
+A per-character timeline diagram: a few characters as horizontal bars, with the
+observation window shaded, showing (a) a character who churns inside the window,
+(b) one who is still active at the end (censored), and (c) one who starts late.
 :::
