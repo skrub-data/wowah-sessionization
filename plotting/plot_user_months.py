@@ -6,7 +6,13 @@ import matplotlib.pyplot as plt
 plt.style.use("seaborn-v0_8-talk")
 # plt.rc("font", family="serif")
 
-df = pl.read_parquet("../data/wowah_churn_data.parquet")
+from add_churn import build_churn_dataset
+
+# The rows the model sees: one per (character, month) in which the character
+# played in the previous month, with a known target.
+df = build_churn_dataset(
+    pl.scan_parquet("../data/wowah_data_2008.parquet"), only_prev_active=True
+)
 # %%
 df.group_by("month").agg(pl.len()).sort("month")
 # %%
@@ -45,9 +51,9 @@ for i, total in enumerate(cumsums):
     ax.text(total, months[i], f"  {total:,}\n ({sign}{diff:,})", va="center", fontsize=8)
 
 ax.invert_yaxis()  # Split 1 at top for natural reading order
-ax.set_xlabel("Number of avatars in the training set (users in the current month)")
+ax.set_xlabel("Number of (avatar, month) rows in the training set")
 ax.set_ylabel("CV Split (Month)")
-ax.set_title("Number of unique avatars in each CV split")
+ax.set_title("Number of rows in each CV split")
 handles, labels = ax.get_legend_handles_labels()
 plt.legend(
     handles, labels,
@@ -55,11 +61,11 @@ plt.legend(
     fontsize=8,
 )
 
-desc = """
-The number of unique avatars in the training set increases with each CV split, 
-and the increase is not constant. Later splits are much larger (up to 3 times the
-size of earlier splits).
-"""
+desc = (
+    "The training set grows with each CV split, but not by a constant amount:\n"
+    f"a month adds between {min(lens):,} and {max(lens):,} rows\n"
+    "(avatars active in the previous month)."
+)
 
 
 ax.spines["top"].set_visible(False)
@@ -69,7 +75,7 @@ ax.spines["right"].set_visible(False)
 ax.annotate(
     desc.strip(),
     xy=(0.1, 0.92),                 # arrow tip: near the short first-split bar
-    xytext=(0.55, 0.80),             # text box: top-middle of the axes
+    xytext=(0.62, 0.95),             # text box: top-middle of the axes
     xycoords="axes fraction",
     textcoords="axes fraction",
     ha="center", va="top", fontsize=8,
@@ -79,7 +85,7 @@ ax.annotate(
 ax.annotate(
     "",
     xy=(0.85, 0.2),                 # arrow tip: toward the long last-split bar
-    xytext=(0.60, 0.71),             # bottom edge of the text box
+    xytext=(0.68, 0.82),             # bottom edge of the text box
     xycoords="axes fraction",
     textcoords="axes fraction",
     arrowprops=dict(arrowstyle="->", color="grey"),
