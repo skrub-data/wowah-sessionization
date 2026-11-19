@@ -47,9 +47,13 @@ Let `M` be the month in which we score a character (and could act on it).
 ## Setup
 
 ```bash
-pixi install            # default environment
-pixi install -e docs    # also installs quarto and jupyter to render the .qmd files
+pixi install            # the only environment: runs and renders everything
 ```
+
+A single environment (aliased as `docs`, so `pixi run -e docs ...` still works)
+holds both the pipeline dependencies and the rendering stack (Quarto, Jupyter,
+ipykernel, jupyter-cache). It can therefore run every script and render every
+`.qmd` file; there is no need for a separate docs environment.
 
 `graphviz` and `pydot` are included because `data_op.skb.report()`, called at
 the end of `main.py`, needs the `dot` command. Use `pixi run` or `pixi shell` so
@@ -77,15 +81,17 @@ earlier layout and need adjusting before use.
 ## Usage
 
 ```bash
-pixi run evaluate                       # 2008 data, 10% of the characters
-pixi run evaluate-all                   # full dataset, 10% of the characters
-pixi run python main.py --dataset all --fraction 1   # everything
+pixi run evaluate                       # fit on the historical raw files, 10% of characters
+pixi run evaluate-all                   # same, keeping every character
+pixi run evaluate-unseen                # evaluate on the held-out raw files
+pixi run predict-unseen                 # fit on historical, predict Nov/Dec 2008
+pixi run python main.py --env train --fraction 1   # same as evaluate-all
 ```
 
-`--dataset` is `2008` (default) or `all`, and `--fraction` is the share of
-characters to sample. The same options exist as arguments of `evaluate()`,
-`cross_validate()` and `random_search()` (Optuna backend, results in
-`wowah_churn_study.db`). Uncomment the calls at the bottom of `main.py` to use
+`--env` is `train` (default), `unseen` or `predict-unseen`, and `--fraction` is
+the share of characters to sample. The same options exist as arguments of
+`evaluate()`, `cross_validate()` and `random_search()` (Optuna backend, results
+in `wowah_churn_study.db`). Uncomment the calls at the bottom of `main.py` to use
 them.
 
 Searched hyperparameters: `session_gap` (15, 30 or 60 minutes), whether to use
@@ -94,7 +100,9 @@ rate of the gradient boosting model.
 
 Other tasks: `pixi run churn` prints the churn table, `pixi run explore` profiles
 the full heartbeat dataset (HTML report and plots in `reports/exploration/`),
-and `pixi run -e docs render` renders the documents.
+`pixi run plot-user-months`, `plot-stats-by-month` and `plot-session-times`
+redraw the plots, and `pixi run render` (or `render-draft` / `render-slides`)
+renders the documents into `docs/`.
 
 Iterating on the exploration figures does not need the full scan: the monthly
 table and the gap histogram are cached under `reports/exploration/cache/`, so

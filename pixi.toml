@@ -22,44 +22,48 @@ tqdm = "*"
 graphviz = "*"
 pydot = "*"
 
-# Only needed to re-render the .qmd files (blog post and slides)
-[feature.docs.dependencies]
+# Rendering and executing the .qmd files (blog post and slides). Quarto runs
+# them through the "python3" Jupyter kernel declared in _quarto.yml, and
+# `cache: true` in _quarto.yml stores results with jupyter-cache.
+quarto = "*"
 jupyter = "*"
 ipykernel = "*"
+ipython = "*"
 nbformat = "*"
 nbclient = "*"
+jupyter-cache = "*"
 
 # Lets scripts in subfolders (plotting/) import `src.utils`
 [activation.env]
 PYTHONPATH = "$PIXI_PROJECT_ROOT"
 
 [environments]
+# Single solved environment: it can render the documents and run every script.
 default = { solve-group = "default" }
-
-[environments.docs]
-features = ["docs"]
-solve-group = "default"
-
-[environments.docs.dependencies]
-quarto = "*"
-jupyter-cache = "*"
+# Alias kept so that `pixi run -e docs ...` (as used in older instructions)
+# keeps working; it resolves to the same packages as `default`.
+docs = { solve-group = "default" }
 
 [tasks]
 # Build and print the user-month churn table from data/wowah_data_2008.parquet
 churn = "python add_churn.py"
-# Explore the full dataset; writes a skrub HTML report and plots
+# Explore the dataset; writes a skrub HTML report and plots
 explore = "python explore_data.py"
 # Redraw the exploration figures from the cached tables (no full rescan)
 explore-plots = "python explore_data.py --only-plots"
-# Build the DataOps plan on a 10% user sample, evaluate it, and generate the report
-evaluate = "python main.py --dataset 2008"
-evaluate-all = "python main.py --dataset all"
-# Plotting scripts (cell-style scripts, run them from the repository root)
+# Fit and evaluate the DataOps plan on the historical raw files (through Oct 2008)
+evaluate = "python main.py --env train"
+# Same, keeping every character instead of the default 10% sample
+evaluate-all = "python main.py --env train --fraction 1"
+# Evaluate on the held-out raw files (Oct 2008 - Jan 2009)
+evaluate-unseen = "python main.py --env unseen"
+# Fit on the historical files, then predict Nov/Dec 2008 from the held-out ones
+predict-unseen = "python main.py --env predict-unseen"
+# Plotting scripts. `plot-user-months` reads "../data/...", hence its own cwd.
 plot-session-times = "python plotting/plot_session_start_end.py"
 plot-stats-by-month = "python plotting/plot_stats_by_month.py"
-
-[feature.docs.tasks]
-# Use with the docs environment: `pixi run -e docs render-draft`
+plot-user-months = { cmd = "python plot_user_months.py", cwd = "plotting" }
+# Render the whole site (all *.qmd in _quarto.yml) into docs/
 render = "quarto render"
 render-draft = "quarto render draft.qmd"
 render-slides = "quarto render skrub-dataops.qmd && quarto render pain_points.qmd"
