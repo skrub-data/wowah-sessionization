@@ -1,0 +1,204 @@
+---
+title: "Section draft: location features"
+format: html
+execute:
+  enabled: false
+---
+
+<!--
+Drop-in replacement for `### 4. Location features in depth` in draft.qmd.
+Figure: images/zone_rarity.png (plotting/plot_zone_rarity.py).
+Numbers are measured on March 2008, session_gap = 30.
+-->
+
+### 4. Location features in depth
+
+Sessions answered *when* a character was playing. Their zones answer *where* —
+and where is a real signal in a game where the map is a level ladder and the
+capital cities are social hubs. The location block is the most involved one in
+the feature table, and it is built almost entirely out of a second sessionisation.
+
+#### A second pass over the same beats
+
+The zone encoder is the same class, split on `(char, zone)` instead of `char`:
+
+```python
+session_encoder_zone = SessionEncoder(
+    split_by=["char", "zone"],
+    timestamp_col="timestamp",
+    session_gap=session_gap * 60,
+    suffix="session_id_zone",
+)
+```
+
+A zone session therefore runs from the first heartbeat in which a character is
+seen in a zone to the last one before they are seen somewhere else — a *visit*,
+not a play session. The two passes are independent: they add two different
+columns (`timestamp_session_id` and `timestamp_session_id_zone`), nothing is
+overwritten, and a character's play sessions are identical whether or not the
+location features are enabled. That is what makes `use_location` a plain skrub
+boolean choice rather than a different pipeline.
+
+Visits are much shorter than play sessions, because players move around inside
+a session. In March 2008 there are 385,715 zone sessions for 109,665 play
+sessions, the median visit is 9m 43s, and 49% of visits consist of a single
+heartbeat. Character 66560's 10h 01m of play shows up as 30 visits over 6 zones:
+
+| zone | visits | time in zone | rarity | hub? |
+|-------------------------|:------:|--------------|-------:|:----:|
+| Orgrimmar | 12 | 2h 05m 59s | 0.66 | yes |
+| The Barrens | 9 | 2h 03m 11s | 1.43 | yes |
+| Wailing Caverns | 2 | 1h 30m 11s | 3.19 | no |
+| Warsong Gulch | 5 | 42m 44s | 1.87 | no |
+| Stranglethorn Vale | 1 | 20m 10s | 1.91 | no |
+| Thunder Bluff | 1 | 10m 01s | 1.71 | no |
+
+The `time in zone` column sums to less than the month's play time — 6h 52m
+against 10h 01m. That is not a bug: a visit is measured from the first to the
+last heartbeat *in that zone*, so the ten minutes between being seen in the
+Barrens and being seen in Wailing Caverns belong to neither. Across the whole
+month, zone time is 81% of play time.
+
+#### Rarity: how special is a zone
+
+The first thing worth knowing about a zone is how many people go there. Rarity
+is $r_v = \log(N / n_v)$, where $N$ is the number of characters in the month and
+$n_v$ the number that visited the zone:
+
+```python
+rarity=(n_unique_characters / pl.col("unique_visitors")).log()
+```
+
+In March 2008 there are 8,429 characters across 122 zones, and the scale runs
+from Orgrimmar at 0.66 (4,370 visitors — the Horde capital, and the single busiest
+place in the data) to 9.04 for the zones with exactly one visitor. High rarity
+means "almost nobody comes here", and at the top of the scale it usually means a
+recording glitch rather than a discovery. The eight zones with exactly one
+visitor in March are Ironforge, Ahn'Qiraj, Blackwing Lair, Deeprun Tram,
+Teldrassil, The Exodar, Bloodmyst Isle and Quel'thalas — the first seven all
+pinned on level-70 Horde characters, and six of them Alliance or Blood Elf
+starting areas that no Horde character has any reason to be in. Ironforge is not
+a one-off either: it appears 259 times across 2008, always on Horde characters,
+never once on an Alliance race. Rarity measures the data, not the world, and the
+rarest observations are the ones most worth distrusting.
+
+The bottom decile of that scale marks the **hubs**: any zone with rarity below
+the 10th percentile — 1.65 in this month — is a place where everyone goes. That
+is 12 of the 122 zones, and they are the capitals plus the level 60–70
+questing corridors:
+
+| zone | visitors | rarity | avg. level there |
+|------------------|---------:|-------:|-----------------:|
+| Orgrimmar | 4,370 | 0.66 | 60.1 |
+| Shattrath City | 2,748 | 1.12 | 69.6 |
+| Undercity | 2,245 | 1.32 | 45.3 |
+| Terokkar Forest | 2,088 | 1.40 | 68.6 |
+| Hellfire Peninsula | 2,058 | 1.41 | 64.5 |
+| Durotar | 2,049 | 1.41 | 23.7 |
+| Zangarmarsh | 2,027 | 1.43 | 66.8 |
+| The Barrens | 2,012 | 1.43 | 28.9 |
+
+Note that a hub is not a "max-level zone": Durotar and the Barrens are starting
+areas with average levels under 30, and they qualify because they are *crowded*.
+The list mixes the two reasons a zone is busy — it is where you train and trade,
+or it is where you were sent at the current level cap — which is exactly why
+time spent in hubs is a weaker signal on its own than time spent out of them.
+
+#### Per-character aggregates
+
+`add_player_rarity` reduces a character's visits to three numbers:
+
+```python
+df.lazy().select(
+    pl.col("char"),
+    rarity.max().over("char").alias("max_rarity"),
+    rarity.mean().over("char").alias("mean_rarity"),
+    (is_hub.sum().over("char") / is_hub.count().over("char")).alias("in_hub"),
+).unique("char")
+```
+
+For character 66560 in March:
+
+| feature | value | reads as |
+|-----------|--------|----------|
+| `max_rarity` | 3.19 | the rarest place they went was Wailing Caverns |
+| `mean_rarity` | 1.55 | on average, a fairly ordinary zone |
+| `in_hub` | 0.63 | 63% of their visits were to a hub |
+
+`max_rarity` is the one that carries level information: a character whose rarest
+visit is a level-70 raid has clearly progressed further than one who never left
+the starting zones. `in_hub` is meant to capture the opposite — how much of the
+month was spent idling in a capital rather than out in the world. The aggregates
+are taken with `.over("char")` on the **heartbeat** table, not on the visit
+table, so each number is a mean over heartbeats. Since polls arrive every ten
+minutes, that is very nearly a time average, but not exactly: a visit is
+truncated at its last heartbeat, so a two-heartbeat visit contributes two rows to
+a two-hour one's twelve. For character 66560 the three possible weightings give
+heartbeats 0.63, visits 0.70, minutes 0.60 — the same story with a different
+resolution. `mean_rarity` moves with it, from 1.55 over heartbeats to 1.66 over
+minutes, because the long visit (Wailing Caverns, 1h 30m, rarity 3.19) gets more
+weight than its eleven heartbeats suggest.
+
+#### Gini: concentrated or spread out
+
+The last block answers a different question: not *where*, but *how evenly*. The
+Gini coefficient over the time a character spent in each zone is 0 when the time
+is split perfectly equally and approaches 1 when all of it is in one place. Low
+values describe an explorer moving between many zones; high values describe a
+character parked in one spot, grinding.
+
+```python
+gini = (n + 1 - 2 * pl.col("cumulative").sum() / pl.col("cumulative").last()) / n
+```
+
+Two details matter for reading the number. First, hub zones are dropped before
+the coefficient is computed (`get_location_gini(..., with_hub=False)`), on the
+grounds that everyone passes through a capital and it says nothing about play
+style — so a character who only ever sat in Orgrimmar is not "infinitely
+concentrated", they are simply not measured. Second, the coefficient is computed
+per character over the whole month, not per play session, so it describes the
+month's geography rather than any single evening.
+
+Measured on March 2008 over the 5,251 characters that get a coefficient, the
+distribution is bimodal: the median is 0.61, the upper quartile 0.75, and 30% sit
+exactly at 0 — of whom all but 72 visited a single non-hub zone in the entire
+month, which makes the coefficient degenerate rather than informative. A further
+3,178 characters (37.7% of the month) never left a hub zone at all and get no
+coefficient, so the left join leaves `gini` null for them. Between the two, only
+about 55% of the month's characters have a Gini value that means anything, which
+is worth knowing before reading much into the feature. For character 66560 the coefficient is 0.56 over non-hub
+zones, and 0.44 if the hubs are included.
+
+Since `add_gini=True` is hard-coded in `make_data_op`, the Gini column is always
+present when the location features are on; `use_location` is the switch that
+turns the whole block off.
+
+#### The whole picture
+
+![](images/zone_rarity.png){fig-align="center"}
+
+On the left, every zone in March 2008 by visitors (log scale) and rarity, with
+the hub threshold drawn in: the relationship is a clean straight line because
+rarity *is* a function of the visitor count, and the hubs are simply the right
+end of it. On the right, the distribution of per-character Gini, with the spike
+at 0 standing for the characters who stayed in one non-hub zone all month.
+
+This block is also by far the most expensive part of the feature table, which is
+why it is a choice at all. On one month of data, the three general feature
+functions (sessions, monthly player aggregates, class aggregates) take about
+0.1 s, while the zone pass takes 0.23 s to encode and 1.6 s to turn into
+features — roughly fifteen times the cost of everything else combined. Almost
+all of it is the Gini: zone rarity costs 0.04 s and the rarity aggregates
+0.06 s, while `add_gini_features` alone takes 1.4 s, because the coefficient has
+to run through `map_groups`, one Python call per character, and that boundary
+is where polars stops being able to vectorise:
+
+```python
+use_location = skrub.choose_bool(name="location_features")
+```
+
+Code: `adding_features.py:120` (`get_zone_rarity`), `adding_features.py:162`
+(`add_player_rarity`), `adding_features.py:210` (`gini`),
+`adding_features.py:225` (`get_location_gini`), `adding_features.py:275`
+(`add_location_features`), `main.py:203` (the zone encoder) and `main.py:283`
+(`use_location`).
