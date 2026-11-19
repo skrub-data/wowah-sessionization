@@ -6,6 +6,40 @@ outline sections were added; earlier line numbers in this file were stale).
 
 Legend: **D** = `draft.qmd`, **C** = code.
 
+## Resolved by the `only_prev_active` change (2026-11-19)
+
+`build_churn_dataset(historical_data, only_prev_active=False)` now has an opt-in
+filter that keeps only rows where `prev_played` is true; `make_data_op` uses it for
+`X` and `y`, while `build_feature_table` keeps the full grid (lags need it).
+
+| # | Status |
+|---|---|
+| 5 | Fixed in code: `remove_unrealistic_entries` removed (output identical up to row order; the table is now sorted by `char, month`). Draft text updated. |
+| 9 | Fixed in code: dead `is_not_null()` clause removed. |
+| 12 | Fixed in code and draft: new-churner target, with the 75% / 0.63 numbers in a callout. The "stopped playing / suspended subscription" wording in the draft's definition section is still to be revisited. |
+| 14 | Partly fixed: `add_churn.py` module, `make_user_month` and `add_churn` docstrings updated. |
+| 6 | Draft text updated to "last observed month and the three padding months". |
+
+New numbers on the 2008 parquet: 81,199 rows (was 221,237), 36.5% positive (was 54.5%).
+On the 2008 raw files through `HISTORICAL_END` (10% sample, default hyperparameters),
+ROC AUC per test month: old definition Mar–Sep 0.50 0.55 0.75 0.79 0.79 0.83 0.79
+(7 folds); new definition Apr–Sep 0.82 0.82 0.82 0.83 0.87 0.88 (6 folds, March is
+lost because January has no previous month). The full dataset keeps 31 folds
+(2006-03 … 2008-09) with either definition. Not comparable populations; the full-dataset
+results were not rerun.
+
+Why the scores went *up*: the "easy" assumption was wrong. The already-absent rows have
+no features, so the model cannot rank within them (AUC 0.43–0.80), and they are 40–70% of
+the old test rows and most of the training rows. On the same test rows (active in M−1), a
+model trained on all rows scores 0.64–0.82 (Apr–Sep) vs 0.82–0.90 trained on active rows
+only. Single diagnostic run, default features (no lags), cause not tested. In the
+2008-only window the Jan 2008 rows are also all `prev_played=False` (December 2007 is
+missing), which hurts the old early folds.
+
+Items 1 and 11: the draft no longer contains a results table; `REPORT.md` has been
+updated with the 2008-only table above, but its fold counts for the full dataset (33)
+and `readme.md` are still stale.
+
 ## Summary
 
 | # | Severity | What is wrong | Draft | Code |

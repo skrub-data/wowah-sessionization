@@ -17,10 +17,11 @@ def show(*objs):
     display(Markdown(f"```python\n{src}\n```"))
 ```
 
-In this blog post we will see how we can predict player churn in World of Warcraft 
+In this post we will see how we can predict player churn in World of Warcraft 
 (WoW), a subscription-based MMORPG released in 2004. More precisely, we are 
 interested in predicting a player's behavior in a given month, and decide whether 
 there is a risk that they will stop playing the next month. 
+
 To do so, we want to train a machine learning model that, given features based 
 on each player's behavior and on the overall playerbase, will be able to predict
 whether player X will stop playing in a given month. 
@@ -31,8 +32,9 @@ whether player X will stop playing in a given month.
 ### Dependencies
 
 Through the post we will build a full machine learning pipeline: we use  
-polars for dataframe operations; [skrub](https://skrub-data.org/stable/) is used
-for data exploration, feature engineering and constructing the overall execution
+[polars](https://pola.rs) for dataframe operations;
+[skrub](https://skrub-data.org/stable/) is used for data exploration, feature
+engineering and constructing the overall execution
 plan through its [Data Ops framework](https://skrub-data.org/stable/data_ops.html); 
 [scikit-learn](https://scikit-learn.org/stable/index.html) is imported for the
 actual ML model; hyperparameter optimization is done using [Optuna](https://optuna.org)
@@ -48,22 +50,25 @@ The entire code is available in this [repository](https://github.com/rcap107/wow
 ## The dataset
 We rely on the [World of Warcraft Avatar History](https://qualinet.github.io/databases/world_of_warcraft_avatar_history_dataset/)
 dataset.
-The dataset is built by scanning the game's servers roughly every 10 minutes, and
-logging information about each **user character** in the Horde faction that is
-found online at the timestamp's time. As we have a sequence of timestamps, this 
+The dataset is built by scanning the game's Taiwanese server roughly every 10
+minutes, and logging information about each **user character** in the Horde faction
+that is found online at the timestamp's time. As we have a sequence of timestamps, this 
 lets us track the behavior of players over time. 
 
-::: {.callout-note}
-#### Expansions and Taiwanese release
+The dataset spans roughly 3 years, with the first timestamps being recorded on 
+2005-12-31 and the final on 2009-01-10. This time frame includes the release of 
+two expansions, *The Burning Crusade*  and *Wrath of the Lich King*: expansions 
+are major events in the dataset, as they introduce new content and bring a major
+influx of new and old players.
+
+::: {.callout-note collapse="true"}
+#### Expansion dates and Taiwanese release
 
 WoWAH was collected on the Taiwanese server *Light's Hope*, so it follows the
 Taiwan/Hong Kong release schedule rather than the North American/European one: 
 importantly the first expansion (*The Burning Crusade*) launched in April 2007 rather than 
 in January; the second expansion (*Wrath of the Lich King*) released in November 
 2008 in both cases. 
-
-Expansion releases are important events in the dataset, as they introduce new content
-and represent a major influx of new and old players. 
 :::
 
 
@@ -91,7 +96,7 @@ The dataset is stored in folders grouped by day and quarter, and logs are stored
 as txt files that contain info about each avatar found online at the given timestamp.
 As the formatting is not standard (not even a csv!), the pre-processing is non-trivial.
 
-Data Ops can still help with this, and indeed we include parsing the files in our
+As we will see, Data Ops help with this, and indeed we include parsing the files in our
 pipeline. However, for convenience we publish a
 [separate script](https://github.com/rcap107/wowah-sessionization/blob/main/src/parse_to_single_table.py),
 to convert the text files in parquet, and we publish the resulting dataframe on
@@ -182,12 +187,10 @@ churn.
 
 ## Modeling player churn
 
-
-
 Modeling user churn is a common application of machine learning models, though 
 the definition of churn is typically business-specific. In general, by "user churn"
 one refers to "a user that does not come back to the service for a certain length 
-of time".
+of time, if ever".
 
 In the context of this example, churn refers to **those avatars that are not found
 online for at least two consecutive months**: we consider those characters as 
@@ -326,10 +329,8 @@ user_month.collect()
 
 :::
 
-
-The grid extends three months past the end of the data. These extra months only 
-exist so that lagged features can be computed on months without data, and the 
-rows are dropped later because their target is unknown.
+The grid extends three months past the end of the data. Their target is unknown, so
+these rows are dropped later and never reach the model.
 
 Now that we have all the combinations (character, month), we can join back the 
 prepared data to mark all the months in which each character was found online, 
@@ -342,8 +343,9 @@ about a character's playtime in January if they started playing in August!
 Then we add the churn information. After sorting by month, `prev_played` is the 
 `has_played` flag of the previous month for the same character (`False` for the 
 first month), `churn` marks the characters absent in both months, and `churn_next` 
-is `churn` shifted one month back within each character. The last month in the data 
-has no "next month" to look at, so its `churn_next` is left empty. 
+is `churn` shifted one month back within each character. The last observed month
+has no "next month" to look at, so its `churn_next` is left empty, and so is that of
+the three padding months. 
 
 
 ::: {.callout collapse="true"}
@@ -363,25 +365,40 @@ r.collect()
 
 Finally, we can put everything together in a single function that takes the 
 historical data as input and returns a dataset with the churn indication as output. 
-It also calls `remove_unrealistic_entries`, a safety check that removes the rows 
-preceding a character's first month and selects the final columns. Rows without 
-a target are dropped, since they can be used neither for training nor for evaluation:
+Rows without a target are dropped, since they can be used neither for training nor
+for evaluation. Optionally, with `only_prev_active=True`, it also keeps only the rows 
+of characters that played in the previous month. We come back to why below:
 
 ```{python}
 #| echo: false
-from add_churn import build_churn_dataset, remove_unrealistic_entries
+from add_churn import build_churn_dataset
 show(build_churn_dataset)
 ```
 
 ```{python}
-churn_data = build_churn_dataset(df)
+churn_data = build_churn_dataset(df, only_prev_active=True)
 churn_data
 ```
 
-This dataframe contains a row for each (character, month) starting from that 
-character's first month up until the second-to-last month of the dataset. In each 
-row, `has_played` informs us of whether the character logged in at any time in that 
-month, and `churn_next` is the target that we want to predict on a monthly basis. 
+This dataframe contains a row for each (character, month) in which the character
+was active in the previous month, up until the second-to-last month of the dataset. 
+In each row, `has_played` informs us of whether the character logged in at any time in
+that month, and `churn_next` is the target that we want to predict on a monthly basis.
+
+::: {.callout-note}
+#### Why only characters that were active in the previous month
+
+Features for month M are built from month M-1, so a character that was already absent in 
+M-1 has no features at all. Such a character is also very likely to be labeled as 
+churned: in the 2008 data, **75%** of the `churn_next=True` rows belong to characters that
+were already absent in the previous month, and the trivial rule "absent last month" 
+alone reaches a ROC AUC of 0.63. These rows have no features of their own, they 
+make up most of the training set, and they are not characters we could still retain. 
+We therefore only keep the rows where the character 
+played in M-1, which leaves 81,199 of the 221,237 rows, and `churn_next=True` for 36.5% 
+of them instead of 54.5%. In other words, the target is now "a character that was active in M-1 and is absent
+in both M and M+1".
+:::
 
 ## Setting up the ML pipeline
 Before starting with feature engineering and actually training the model, it's 
@@ -412,8 +429,9 @@ of characters in each month is never constant and indeed increases over time:
 
 For this reason, we need to define a custom splitter that is aware of the constraints
 we are working with. Given that we are working month-by-month, each split should
-contain all the characters that played in a specific month, and should be able to
-do so regardless of the fact that the number of characters changes.
+contain all the rows of a specific month (the characters that played in the previous
+month, as explained above), and should be able to do so regardless of the fact that 
+the number of characters changes.
 
 There is a second constraint: the target of a row is the churn status of the 
 *following* month, so it is only known one month later. If the training set included 
@@ -538,10 +556,10 @@ results = data_op.skb.cross_validate(environment=main.get_env("train"))
 
 
 ::: {.callout-note}
-The evaluation includes characters that were already absent in the previous month: 
-predicting that they will remain absent is easy. A stricter evaluation would only 
-score the characters that were still active, which are the ones that could 
-actually be retained.
+Only characters that played in the previous month are scored (see 
+`only_prev_active=True` above): the characters that were already absent have no 
+features and are not the ones that could be retained, and keeping them in the 
+training set lowers the scores on the characters that are still active.
 :::
 
 ## Outline: subjects still to cover
@@ -698,13 +716,13 @@ not be reused.
 
 The post gives AUC values without saying what a trivial model would score.
 
-- `churn_next` is true for about 54.5% of rows in the 2008 churn dataset
-  (221,237 rows, 11 months), and `has_played` is true for about 41%.
-- So AUC 0.5 is genuinely chance, but accuracy 0.55 is also achievable by
-  predicting "churned" always. Say which metric is being reported and why.
+- `churn_next` is true for about 36.5% of rows in the 2008 churn dataset
+  (81,199 rows, 10 months), and `has_played` is true for about 58%.
+- So AUC 0.5 is genuinely chance, but accuracy 0.64 is also achievable by
+  predicting "not churned" always. Say which metric is being reported and why.
 - The distribution of `churn_next` by month, to show that the base rate drifts.
 
-Code: `add_churn.py:181` (`build_churn_dataset`), `main.py:302` (`roc_auc`).
+Code: `add_churn.py` (`build_churn_dataset`), `main.py` (`with_scoring("roc_auc")`).
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-base-rate.png`
@@ -714,26 +732,32 @@ Two panels: (a) monthly `churn_next` rate as a line over the test months;
 see whether score changes track base-rate changes.
 :::
 
-### 7. The "already absent" evaluation caveat
+### 7. Why only characters active in the previous month
 
-There is a callout at the end noting that characters already absent in the
-previous month are easy to score. It is never quantified, and the code has no
-switch for it.
+The post now scores only characters that played in the previous month
+(`only_prev_active=True`), and explains why in a callout. The numbers behind
+the choice are only quoted, not shown.
 
-- Split the test set into "active last month" and "already absent last month" and
-  report AUC separately.
+- Keep the results of the old definition (all rows, 221,237 rows in the 2008 data,
+  54.5% positive) next to the new ones (81,199 rows, 36.5% positive), per test month.
+- 75% of the old positive rows were already absent in the previous month, and the
+  trivial rule "absent last month" gets ROC AUC 0.63.
+- The new scores are higher, not lower. On the same test rows (characters active in M-1),
+  a model trained on all rows scores 0.64 to 0.82 depending on the month, versus 0.82 to
+  0.90 when trained on active rows only. The rows with no features do not make the
+  problem easier, they pollute training; the cause is not tested.
 - This is the number that matters operationally: you can only retain characters
   who are still around.
-- Note that the code currently has no option to restrict scoring this way, so
-  this would be a new evaluation path.
 
-Code: `add_churn.py:143` (`churn` definition), `main.py:353` (`evaluate`).
+Code: `add_churn.py` (`build_churn_dataset`, `only_prev_active`), `main.py`
+(`make_data_op`).
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-auc-split.png`
 
-Grouped bar chart per test month: AUC on all rows vs. AUC on rows with
-`prev_played == True`. The gap between the two bars is the point of the section.
+Grouped bar chart per test month: AUC with the old definition (all rows) vs. the
+new one (rows with `prev_played == True`). The gap between the two bars is the
+point of the section.
 :::
 
 ### 8. Hyperparameter tuning

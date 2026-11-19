@@ -21,7 +21,8 @@ Let `M` be the month in which we score a character (and could act on it).
 - **Churned as of a month** (`churn`): the character was **not seen in that
   month and not seen in the previous month**.
 - **Target** (`churn_next`): the character has churned as of `M + 1`, i.e. it is
-  absent in both `M` and `M + 1`.
+  absent in both `M` and `M + 1`. Only characters that played in `M - 1` are scored
+  (`build_churn_dataset(..., only_prev_active=True)`): the others have no features.
 - **Features** for a row at month `M` are computed from the heartbeats of month
   `M - 1` only (plus fixed attributes such as race and class).
 - **Validation**: `Splitter` tests on a month `T` and trains on the rows up to

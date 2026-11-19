@@ -75,7 +75,15 @@ Churn is defined at monthly resolution in `add_churn.py`:
    month (and for the padding months), and `build_churn_dataset()` drops those rows.
 
 `build_churn_dataset()` returns `char, month, has_played, prev_played, churn,
-churn_next, first_month`. `X` is `(char, month)`.
+churn_next, first_month`, sorted by `(char, month)`. `X` is `(char, month)`.
+
+With `only_prev_active=True` (used by `make_data_op` for `X` and `y`), only the rows where
+`prev_played` is true are kept. Features for month `M` come from `M - 1`, so a character that
+was already absent in `M - 1` has no features, and mostly positive labels: on the 2008 file,
+75% of the positive rows were already absent in `M - 1`, and the rule "absent last month"
+alone gave a ROC AUC of 0.63. The target is therefore "active in `M - 1`, absent in both `M`
+and `M + 1`". The feature grid in `build_feature_table` keeps the default (all rows), because
+lagged features need each character's full monthly timeline.
 
 **Timeline.** For a row at month `M` (the month in which one could act on at-risk
 players):
@@ -154,7 +162,7 @@ grows over time, which breaks `TimeSeriesSplit`'s assumption of equal-size folds
 
 ### `add_churn.py`: target table
 
-`make_data`, `make_user_month`, `add_churn`, `remove_unrealistic_entries` and
+`make_data`, `make_user_month`, `add_churn` and
 `build_churn_dataset` implement the definition above. Running the file prints the head of
 the table.
 
@@ -228,31 +236,38 @@ Cell-style scripts (`# %%`), run from the repository root:
 
 ## Results of a run
 
-`cross_validate()` with a 10% sample of the characters and default hyperparameters, ROC AUC
-per test month.
+Evaluation on the raw files of January to October 2008 (`HISTORICAL_END`), 10% sample of
+the characters, default hyperparameters, ROC AUC per test month (7 folds with all rows, 6 folds
+when scoring only characters active in `M - 1`, because the first month has no previous month):
 
-2008 file (9 folds):
+| Definition | Mar | Apr | May | Jun | Jul | Aug | Sep |
+|---|---|---|---|---|---|---|---|
+| All rows (`only_prev_active=False`, old) | 0.50 | 0.55 | 0.75 | 0.79 | 0.79 | 0.83 | 0.79 |
+| Characters active in `M - 1` (current) | — | 0.82 | 0.82 | 0.82 | 0.83 | 0.87 | 0.88 |
 
-| Mar | Apr | May | Jun | Jul | Aug | Sep | Oct | Nov |
-|---|---|---|---|---|---|---|---|---|
-| 0.50 | 0.49 | 0.74 | 0.78 | 0.82 | 0.82 | 0.80 | 0.85 | 0.85 |
+The two rows score different populations, so they are not directly comparable. The old
+near-chance first folds do not appear with the current definition. The rows with
+`prev_played` false are not "easy": they have no features, so the model cannot rank them
+(AUC 0.43 to 0.80 within that group). Compared on the same test rows (active in `M - 1`),
+training on all rows gave 0.64 to 0.82 (Apr–Sep), against 0.82 to 0.90 when training on active
+rows only (one diagnostic run, same features and hyperparameters; the cause is not tested).
+In this 2008-only window, January 2008 rows also all have `prev_played` false just because
+December 2007 is not in the files. The earlier full-dataset
+numbers (33 folds, 9-fold 2008 table) predate `HISTORICAL_END` and the `only_prev_active`
+change and have not been regenerated. With `HISTORICAL_END` the full dataset gives 31 folds
+(March 2006 to September 2008) with either definition.
 
-Full dataset (33 folds, March 2006 to November 2008): the first two folds are 0.50 and 0.45,
-then scores are mostly 0.8 to 0.9, with a range of 0.65 to 0.92 (the lowest are two consecutive
-folds, around the 11th and 12th test months).
-
-The first folds have very little training data (a few months of a growing playerbase), which
-explains the near-chance scores. These numbers are a sanity check, not a tuned benchmark, and
-they change by a few hundredths between runs.
+These numbers are a sanity check, not a tuned benchmark, and they change by a few hundredths
+between runs.
 `wowah_churn_study.db` contains Optuna runs from earlier searches; they predate the
 `churn_next` target, so their scores are not comparable with the table above.
 
 ## Caveats
 
-- The evaluation covers all characters, including those already absent in `M - 1`. For
-  them, "stays absent" is easy to predict, so the AUC is higher than it would be on
-  the characters that are still active and could actually be retained. Evaluating only on
-  characters that played in `M - 1` is not implemented yet.
+- With `only_prev_active=False`, the evaluation covers characters already absent in `M - 1`.
+  They have no features, so the model cannot rank them, and they were found to lower the
+  scores on the active characters (see "Results of a run"). The default pipeline now uses
+  `only_prev_active=True`.
 - With the 2008-only file, every character seen in January 2008 looks like a new
   player (`first_month` is cut off at the start of the data).
 - Several scripts still depend on legacy data files (see [Files in `data/`](#files-in-data)).

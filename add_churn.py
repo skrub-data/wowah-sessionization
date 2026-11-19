@@ -1,30 +1,34 @@
 """
-This script is used to add a "target" column to the dataset.
+This script builds the (char, month) table with the prediction target.
 
-The idea is that, given a month, we want to use all the data up to the last day
-of the previous month to predict whether a user will churn in the next month.
+The idea is that, given a month M, we use all the data up to the last day of the
+previous month (M - 1) to predict whether a character will be absent in both
+M and M + 1 ("churn_next").
 
-So, if we are in the month of April, we want to use all the data up to March 31st
-to predict whether a user will churn in May. We want to predict May because we
-might want to take action in April to prevent the user from churning in May.
+So, if we are in the month of April, we use all the data up to March 31st to
+predict whether a character will be absent in both April and May. We look at
+May because we might want to take action in April to prevent the character from
+churning.
 
-To do this, we need to create a dataset that has one row per user per month,
-and a column that indicates whether the user has played in that month or not.
+To do this, we need one row per character per month, and a "has_played" column
+that is True if the character played in that month, and False otherwise:
 
-We need then to create a dataset with all the months in the range we have data for,
-then we need to do the cross product with the unique characters.
-Now we want to prepare the data we have so that the "has played" colum is True
-if the user has played in that month, and False otherwise.
+- we create all the months in the range we have data for, and take the cross
+  product with the unique characters;
+- we find all the unique (char, month) combinations in the original dataset,
+  and left join them to the cross product. Null values in "has_played" are
+  filled with False;
+- months prior to the first month a character appears in are filtered out.
 
-We can do this by finding all the unique combinations of user and month in the
-original dataset, and then doing a left join with the "user month" dataset.
-Any null values in the "has played" column will be filled with False, indicating
-that the user did not play in that month.
-Unique combinations of user and month include months prior to the first month
-a player has appeared in the dataset, so they need to be filtered out before
-creating the final dataset.
+From "has_played" we derive:
 
-This is the "churn" dataset, which we can then use to train a model.
+- "prev_played": "has_played" in the previous month;
+- "churn": the character is absent this month AND the previous month;
+- "churn_next": "churn" in the following month, i.e. the target.
+
+Since the features of month M are built from M - 1, a character that was already
+absent in M - 1 has no features. `build_churn_dataset(only_prev_active=True)`
+keeps only the rows where the character played in M - 1.
 """
 
 # %%
@@ -60,13 +64,9 @@ def make_user_month(df, interval="1mo"):
 
     This is done with a cross-product between the unique users and the range of months.
 
-    This function is artificially generating months past the last month in the dataset.
-    This is because we are also adding lagged features with lags of up to 3 months.
-    At train time, we have access to all the information. If we try to predict churn
-    for one of the months we have lagged information for, the model should not crash.
-    It will still be missing the information "for the current month", but the
-    lagged information will be available.
-    This is more a sanity check than anything else.
+    This function is artificially generating 3 months past the last month in the
+    dataset. Their "churn_next" is null, so `build_churn_dataset` drops them: they
+    are only visible when calling `add_churn` directly.
 
     Note that since the months are generated from the range of the dataset, they
     may include months prior to a user's first activity. These will need to be
@@ -112,7 +112,8 @@ def add_churn(user_month, data):
     built from the previous month's data, so the target cannot be the churn
     status of the same month: that status includes "absent last month", which
     is exactly what the features reveal. "churn_next" is null for the last
-    month in the data, because the following month has not been observed.
+    observed month and for the padding months added by `make_user_month`,
+    because the following month has not been observed.
     """
 
     last_month = data.lazy().select(pl.col("month").max()).collect().item()
@@ -139,55 +140,53 @@ def add_churn(user_month, data):
         )
         .with_columns(
             # churn = absent this month AND absent last month
-            # null on a character's first month is filled with False
-            churn=pl.col("prev_played").is_not_null()
-            & ~pl.col("has_played").fill_null(False)
-            & ~pl.col("prev_played").fill_null(False)
+            # prev_played is False on a character's first month
+            churn=~pl.col("has_played") & ~pl.col("prev_played")
         )
         .with_columns(
             churn_next=pl.when(pl.col("month").dt.offset_by("1mo") <= last_month)
             .then(pl.col("churn").shift(-1).over("char"))
             .otherwise(None)
         )
+        .select(
+            "char",
+            "month",
+            "has_played",
+            "prev_played",
+            "churn",
+            "churn_next",
+            "first_month",
+        )
     )
     return df_with_user_month
 
 
-def remove_unrealistic_entries(churn_data, data):
+def build_churn_dataset(historical_data, only_prev_active=False):
     """
-    Remove entries from the churn data where the month is before the first month
-    seen for the character. This ensures that we do not have rows for months that
-    are unrealistic given the player's activity history.
+    Build the (char, month) table with `has_played`, `prev_played`, `churn` and
+    the target `churn_next`.
+
+    Rows whose target is unknown (the last observed month and the padding months
+    after it) cannot be used to train or evaluate a model, so they are dropped.
+
+    With `only_prev_active=True`, only the rows where the character played in the
+    previous month are kept. Features for a row at month M are built from month
+    M - 1, so a character that was already absent in M - 1 has no features and
+    is not a prediction we could act on: the target then only contains
+    characters that were active in M - 1 and are absent in both M and M + 1.
+    Keep the default (all rows) when the full (char, month) grid is needed, for
+    example to build lagged features, which need each character's full timeline.
     """
-    churn_data = (
-        churn_data.join(
-            data.select("char", "first_month").unique(), on="char", how="left"
-        )
-        .filter(pl.col("month") >= pl.col("first_month_right"))
-        .drop("first_month")
-        .select(
-            pl.col("char"),
-            pl.col("month"),
-            pl.col("has_played"),
-            pl.col("prev_played"),
-            pl.col("churn"),
-            pl.col("churn_next"),
-            pl.col("first_month_right").alias("first_month"),
-        )
-    )
-    return churn_data
-
-
-def build_churn_dataset(historical_data):
     # Load the dataset
     data = make_data(historical_data)
     # Add the combinations of user months
     user_month = make_user_month(historical_data)
-    churn_data = add_churn(user_month, data)
-    churn_data = remove_unrealistic_entries(churn_data, data)
-    # Rows whose target is unknown (the last observed month and the padding
-    # months after it) cannot be used to train or evaluate a model.
-    return churn_data.filter(pl.col("churn_next").is_not_null()).collect()
+    churn_data = add_churn(user_month, data).filter(
+        pl.col("churn_next").is_not_null()
+    )
+    if only_prev_active:
+        churn_data = churn_data.filter(pl.col("prev_played"))
+    return churn_data.collect()
 
 
 if __name__ == "__main__":

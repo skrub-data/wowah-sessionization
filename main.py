@@ -270,8 +270,10 @@ def make_data_op(load_fraction=0.1, return_x=False):
         .alias("guild")
     )
 
+    # Only score characters that played in the previous month: the others have
+    # no features to predict from.
     user_month_has_played = historical_data.skb.apply_func(
-        build_churn_dataset
+        build_churn_dataset, only_prev_active=True
     ).skb.set_name("query")
     X = user_month_has_played["char", "month"].skb.mark_as_X(cv=Splitter())
     y = user_month_has_played["churn_next"].skb.mark_as_y()
