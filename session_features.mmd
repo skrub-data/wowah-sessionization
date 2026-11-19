@@ -1,0 +1,52 @@
+%%{init: {'theme':'base','themeVariables':{'clusterBkg':'#fffdf5','clusterBorder':'#d8cfa8','primaryColor':'#eef2f9','primaryBorderColor':'#2a52a8','lineColor':'#5b6472','fontSize':'15px'}}}%%
+%% Session features: from raw heartbeats to one row per (char, month).
+%% Render: npx @mermaid-js/mermaid-cli -i session_features.mmd -o images/session_features.svg -b white -w 1400
+flowchart TB
+    A["<b>Raw heartbeats</b> · one row per poll<br/><i>char · timestamp · zone · level · guild</i>"]
+
+    subgraph ENC["1. skrub.SessionEncoder — refit on each month"]
+        direction LR
+        GAP["session_gap is a tuned choice:<br/>skrub.choose_from([30, 60, 15])"]
+        S["sort beats by char, timestamp<br/>diff to the previous beat"]
+        D{"gap &gt; session_gap?"}
+        N["yes → new session<br/>ids = cumsum of boundaries"]
+        GAP -.-> D
+        S --> D
+        D --> N
+    end
+
+    B["<b>Sessionised heartbeats</b> · + timestamp_session_id<br/><i>same rows, same order</i>"]
+
+    subgraph AGG["2. get_session_duration → add_session_features"]
+        direction LR
+        G["session_start = first beat<br/>session_end = last beat<br/>duration = end − start<br/><i>single beat → 1 min</i>"]
+        M["group by (char, month):<br/>count, sum / mean / std of duration,<br/>mean session_start and session_end"]
+        G --> M
+    end
+
+    subgraph ZONE["Location branch (optional)"]
+        direction LR
+        Z["second SessionEncoder<br/>split_by = (char, zone)"]
+        L["zone rarity · hub share ·<br/>Gini of time per zone"]
+        Z --> L
+    end
+
+    F["<b>Feature table</b> (char, month)<br/>joined onto the churn grid"]
+    T["TableVectorizer"]
+
+    A --> ENC
+    ENC --> B
+    B --> AGG
+    B --> ZONE
+    AGG --> F
+    ZONE --> F
+    F --> T
+
+    style A fill:#e8eef7,stroke:#2a52a8
+    style B fill:#e8eef7,stroke:#2a52a8
+    style F fill:#fad9c6,stroke:#c04a10
+    style T fill:#efe6f7,stroke:#6a3d9a
+    style GAP fill:#fff6d6,stroke:#b58900,stroke-dasharray: 4 3
+    style ENC fill:#fffdf5,stroke:#d8cfa8
+    style AGG fill:#fffdf5,stroke:#d8cfa8
+    style ZONE fill:#fffdf5,stroke:#d8cfa8
