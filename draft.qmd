@@ -536,15 +536,6 @@ data_op = make_data_op(load_fraction=0.1)
 results = data_op.skb.cross_validate(environment=main.get_env("train"))
 ```
 
-The ROC AUC of each test month (March to November 2008, with default hyperparameters; values change by a few hundredths between runs) is:
-
-| Mar | Apr | May | Jun | Jul | Aug | Sep | Oct | Nov |
-|---|---|---|---|---|---|---|---|---|
-| 0.50 | 0.52 | 0.75 | 0.81 | 0.83 | 0.84 | 0.80 | 0.86 | 0.84 |
-
-The first folds are close to chance because there are only a few months of training 
-data, and the playerbase is small. Scores improve as more history becomes available. 
-These are not tuned results: the point of this post is the structure of the pipeline.
 
 ::: {.callout-note}
 The evaluation includes characters that were already absent in the previous month: 
