@@ -89,173 +89,14 @@ Avatar information includes:
 - The avatar's location in the game's world
 
 
-::: {.callout-note collapse="true"}
 #### Parsing the data
 
-The dataset is stored in folders grouped by day and quarter, and logs are stored
-as txt files that contain info about each avatar found online at the given timestamp.
-As the formatting is not standard (not even a csv!), the pre-processing is non-trivial.
+The dataset does not arrive as a table. It is 3.5 GB of text: 138,084 `.txt`
+files spread over 1,082 day folders, nested inside quarterly folders. Each file is 
+a dump of a **server snapshot**, stored as a txt file with a Lua-like syntax. 
 
 As we will see, Data Ops help with this, and indeed we include parsing the files in our
-pipeline. However, for convenience we publish a
-[separate script](https://github.com/rcap107/wowah-sessionization/blob/main/src/parse_to_single_table.py),
-to convert the text files in parquet, and we publish the resulting dataframe on
-[Kaggle: World of Warcraft Avatar History 2006-2009](https://www.kaggle.com/datasets/ryye107/world-of-warcraft-avatar-history).
-
-::: {.columns}
-
-::: {.column}
-
-**Folder structure**
-
-```
-WoWAH
-├── 2006_01_03
-│   ├── 2006-01-01
-│   │   ├── 00-03-56.txt
-│   │   ├── 00-13-43.txt
-│   │   ├── 00-23-48.txt
-│   │   ├── 00-33-48.txt
-│   │   ├── ...
-│   ├── 2006-01-02
-│   ├── ...
-├── 2006_04_06
-├── ...
-```
-
-
-
-:::
-
-::: {.column}
-
-**Content of a single log file**
-
-```
-# head WoWAH/2006_01_03/2006-01-01/00-03-56.txt 
-Persistent_Storage = {
-	[1] = "0, 12/31/05 23:59:46, 1,0, , 5, Orc, Warrior, Durotar, no, 0",
-	[2] = "0, 12/31/05 23:59:46, 1,1, , 9, Orc, Shaman, Durotar, yes, 0",
-	[3] = "0, 12/31/05 23:59:52, 2,2, , 13, Orc, Shaman, Durotar, no, 0",
-	[4] = "0, 12/31/05 23:59:52, 2,3,0, 14, Orc, Warrior, Durotar, no, 0",
-	[5] = "0, 12/31/05 23:59:52, 2,4, , 14, Orc, Shaman, Durotar, yes, 0",
-	[6] = "0, 12/31/05 23:59:52, 2,5, , 16, Orc, Hunter, The Barrens, yes, 0",
-	[7] = "0, 12/31/05 23:59:52, 2,6, , 18, Orc, Warlock, The Barrens, no, 0",
-	[8] = "0, 12/31/05 23:59:52, 2,7, , 17, Orc, Hunter, Silverpine Forest, yes, 0",
-...
-```
-
-
-:::
-
-:::
-
-
-
-
-:::
-
-### 1. Parsing the raw logs
-
-The dataset does not arrive as a table. It is 3.5 GB of text: 138,084 `.txt`
-files spread over 1,082 day folders, nested inside quarterly folders.
-
-```
-WoWAH/2008_10_12/2008-10-01/08-27-57.txt
-     └── quarter ┘ └── day ──┘ └─ file ┘
-```
-
-Each file is a dump of one *poll* of the server, written in a Lua-like syntax
-rather than CSV or JSON:
-
-```lua
-Persistent_Storage = {
-    "0, 06/12/07 03:17:48, 1,46340,53, 26, Orc, Hunter, Razorfen Kraul, , 0", -- [1]
-    "0, 06/12/07 03:17:48, 1,31887, , 10, Orc, Hunter, Durotar, , 0", -- [2]
-}
-```
-
-The quote–comma–quote structure is why this cannot be read with
-`pl.read_csv`: the field names are not in the file, the delimiters are inside a
-string, and the same file also contains a `RoundInfo` block that is not made of
-avatar records at all. A regular expression per line is
-the simplest thing that works, and it is robust to the two different record
-layouts the dataset uses across the years.
-
-One file is not one player: it is one *poll* of the server. The crawler walks
-the list of avatars online and writes a row for each, so a poll takes a few
-minutes to complete and the timestamps inside one file spread over that window:
-on 2008-10-01 the 136 files each cover about four minutes and hold ~300 records.
-Consecutive files start roughly ten minutes apart — the sampling interval
-documented by the dataset authors — and, measured per character, the median gap
-between two heartbeats is 601 seconds. The day totals 22,082 heartbeats, ~5,300
-distinct timestamps and 1,689 characters, about 160 rows per 10-minute poll.
-
-The tree is not uniformly dense either: a day folder holds a median of 141 files
-(1 to 145 in practice), so the raw logs are a regular 10-minute grid rather than
-a stream of events. That is worth keeping in mind for the sessionisation later:
-what looks like a 10-minute gap between two beats is usually just the sampling
-period, not the player stepping away.
-
-Parsing therefore means walking the tree, matching each heartbeat line, keeping
-seven fields, and normalising them:
-
-| kept | type | note |
-|------|------|------|
-| `timestamp` | `Datetime` | `MM/DD/YY HH:MM:SS` → parsed, not string-sorted |
-| `char` | `Int32` | avatar id, cast with `strict=False` |
-| `guild` | `Int32` | anonymous guild id; an empty field becomes `null` |
-| `level` | `Int32` | cast with `strict=False` |
-| `race` | `String` | Orc, Tauren, Blood Elf… |
-| `charclass` | `String` | Warrior, Mage… |
-| `zone` | `String` | Durotar, The Barrens… |
-
-The remaining columns are dropped. The dataset documentation names all eleven
-fields: dummy, query time, query sequence number, avatar id, guild, level, race,
-class, zone, and two more dummies. The first field is `0` on every line of the
-archive and the last is `0` too, so neither carries information. The
-second-to-last is the interesting one: in the 2006 files it is a `yes`/`no` flag,
-and from 2007 onwards it is the class name in upper case (`HUNTER`) or empty —
-the same information as `charclass` in a different encoding, so it adds nothing
-once `charclass` is kept.
-
-::: {.callout-note collapse="true"}
-#### What the regex silently drops
-
-The pattern only accepts ASCII letters, apostrophes and spaces in the text
-fields, so some heartbeats never make it into the table. Measured on random
-samples of 80 files per quarter:
-
-| quarter | heartbeats | parsed | dropped | main cause |
-|---------|-----------:|-------:|--------:|------------|
-| 2006-01 | 22,264 | 99.76% | 0.24% | corrupted race (`373族`) |
-| 2006-07 | 16,231 | 99.75% | 0.25% | same |
-| 2007-01 | 15,746 | 99.93% | 0.07% | same |
-| 2007-04 | 28,315 | 95.00% | 5.00% | zone names |
-| 2008-01 | 25,325 | 97.26% | 2.74% | zone names |
-| 2008-10 | 18,426 | 96.54% | 3.46% | zone names |
-
-The regression is sharp and it has a date. Until early 2007 the only losses are
-corrupted race fields. From the Burning Crusade onwards the zone names start
-containing punctuation the pattern rejects (`Auchindoun: Shadow Labyrinth`,
-`Coilfang: The Slave Pens`, `Ahn'kahet: The Old Kingdom`, `Zul'Drak`), and with
-Wrath of the Lich King zones arrive in Chinese (`龍骨荒野`, `未知`). From 2007-04
-onwards between 3% and 5% of all heartbeats are lost.
-
-This is not harmless. The lost zones are ordinary dungeons and open-world areas,
-not exotic edge cases, so a character who spent an evening inside `Auchindoun`
-looks like they were offline — exactly the kind of hole the session features and
-the churn label are built on. In the 2008-10 sample the dropped beats are spread
-over 26 of the ~166 zones that appear.
-
-Relaxing the text fields to `[^,]+` and keeping the zone as a string recovers
-997 of the 1,017 dropped heartbeats in that sample; the 20 that remain are the
-records whose *race* field is corrupted. The strict pattern looks like a leftover
-from the CSV-writing version of the script, where a comma inside a field would
-have broken the output file.
-
-:::
-
+pipeline. 
 Because a heartbeat table has to be rebuilt for every new set of files, the
 parser is not a one-off script but a function of the file list:
 `parse_files(file_paths)` returns a typed `DataFrame`. That is what lets
@@ -279,12 +120,72 @@ Two details make that practical:
   Counting the files: 132,042 in the historical set, 10,058 in the held-out set,
   4,016 shared, 138,084 in total.
 
-Code: `src/parse_to_single_table.py:22` (`line_re`),
-`src/parse_to_single_table.py:33` (`process_single_file`),
-`src/parse_to_single_table.py:75` (`PARSED_COLUMNS`),
-`src/parse_to_single_table.py:78` (`list_raw_files`),
-`src/parse_to_single_table.py:104` (`parse_files`),
-`main.py:246` (`load`), `main.py:312` (`get_env`).
+
+
+:::
+
+::: {.callout-note collapse="true"}
+#### More detail on the dataset and parsing
+
+**Folder structure**
+
+```
+WoWAH/2008_10_12/2008-10-01/08-27-57.txt
+     └── quarter ┘ └── day ──┘ └─ file ┘
+```
+
+**Example content of a single log file**
+
+```lua
+Persistent_Storage = {
+    "0, 06/12/07 03:17:48, 1,46340,53, 26, Orc, Hunter, Razorfen Kraul, , 0", -- [1]
+    "0, 06/12/07 03:17:48, 1,31887, , 10, Orc, Hunter, Durotar, , 0", -- [2]
+}
+```
+
+
+The quote–comma–quote structure is why this cannot be read with
+`pl.read_csv`: the field names are not in the file, the delimiters are inside a
+string, and the same file also contains a `RoundInfo` block that is not made of
+avatar records at all. Additionally, record layouts change across the years,
+so the format is not consistent. 
+The simplest approach is to use **regular expressions** to parse each line. 
+
+**Polling time**
+
+Each file represents a single **server snapshot**, rather than the trajectory of
+a single player. In fact, polling can require multiple minutes as the crawler 
+reads the list of avatars online and writes them in the log. 
+
+The content of each folder is not uniform: the number of files (i.e., snapshots)
+varies between 1 and 145 (with a median of 141), and the samples are a 10-minute
+grid, with some variability due to the time required by the crawler to poll all
+the users in the server. 
+The 10-minute gap is important: it means that this is the sampling period, rather
+than the player interrupting their session.
+
+Parsing therefore means exploring the directory tree, applying the regex to match
+only the heartbeat lines, keeping the expected seven fields, and then normalising
+them to a proper dataframe:
+
+| kept | type | note |
+|------|------|------|
+| `timestamp` | `Datetime` | `MM/DD/YY HH:MM:SS` → parsed, not string-sorted |
+| `char` | `Int32` | avatar id, cast with `strict=False` |
+| `guild` | `Int32` | anonymous guild id; an empty field becomes `null` |
+| `level` | `Int32` | cast with `strict=False` |
+| `race` | `String` | Orc, Tauren, Blood Elf… |
+| `charclass` | `String` | Warrior, Mage… |
+| `zone` | `String` | Durotar, The Barrens… |
+
+
+While the parsing operation is part of the Data Ops pipeline, for convenience 
+and to prepare dataframes that can be used for exploration we publish a 
+[separate script](https://github.com/rcap107/wowah-sessionization/blob/main/src/parse_to_single_table.py),
+to convert the text files in parquet, and we publish the resulting dataframe on
+[Kaggle: World of Warcraft Avatar History 2006-2009](https://www.kaggle.com/datasets/ryye107/world-of-warcraft-avatar-history).
+
+::: 
 
 
 
