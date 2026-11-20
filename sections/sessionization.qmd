@@ -5,26 +5,30 @@ execute:
   enabled: false
 ---
 
-<!--
-Drop-in replacement for `### 3. What a "session" is` in draft.qmd.
-Kept in its own file so the post can be edited in parallel; nothing here is
-rendered as part of the site (`_quarto.yml` only picks up root-level `*.qmd`).
-Figures referenced: images/session_features.svg, images/session_gap_example.png
--->
+### Generating session-based features
 
-### 3. What a "session" is
+We first need to define what a "**session**" is in this context. 
 
-A heartbeat record says that an avatar was online at one poll. It does not say
-when the player logged in, when they logged out, or how many separate sittings
-the month contained. Building that from the polls is what `skrub.SessionEncoder`
-does, and the result is the raw material for the session features.
+The reason we need sessions is because we have access to _heartbeats_, which only
+tell us that the avatar was online at the time of the poll. They do not give us
+unformation about when the player logged in, logged out, or how many sittings 
+a player had through a month. 
+
+We use the [SessionEncoder](https://skrub-data.org/dev/reference/generated/skrub.SessionEncoder.html)
+to add a "session ID" feature to the feature matrix, which is then used as the 
+base feature for all the other session features.
 
 #### The rule
+
+
+::: {.callout-important}
 
 A session is a run of heartbeats in which consecutive beats are at most
 `session_gap` apart. One character's beats are sorted by time, the gap to the
 previous beat is computed, and every gap larger than the threshold opens a new
-session:
+session.
+
+:::
 
 ```python
 session_encoder = SessionEncoder(
@@ -33,33 +37,29 @@ session_encoder = SessionEncoder(
 beats = session_encoder.fit_transform(month_of_heartbeats)
 ```
 
-The encoder is stateless and it only *adds* a column (`timestamp_session_id`):
-every row, and its original order, comes back untouched. That is what makes it
-usable inside the feature function instead of as a pre-processing step, and it is
-also why it has to be refit for each month — sessions are a property of the data
-being encoded, not a fixed transformation.
+The `SessionEncoder` is stateless: its functionality is limited to *adding a column*
+(`timestamp_session_id`) to each row, while keeping the other values and the row
+order unchanged. This also means that the encoder needs to be refit for each month:
+sessions are a property of the data, rather than a fixed transformation. 
 
-#### The gap is a choice, not a constant
+#### Choosing the session gap
 
-Polls arrive roughly every ten minutes, so a gap of ten minutes means nothing
-and a gap of a few hours means the player left. Where to put the boundary is a
-modelling decision, and it is small enough to tune: `session_gap` is declared as
-a skrub choice and searched along with everything else.
+Given that polls are executed with a ten-minutes cadence (with some variance), 
+a gap of 10 minutes is expected of all players and thus does not mean anything;
+a gap of multiple hours instead means that the player took a break.
+
+The actual value is a modelling decision that can be tuned along all other hyperparameters
+thanks to the skrub choices:
 
 ```python
 session_gap = skrub.choose_from([30, 60, 15], name="session_gap")
 ```
 
-On the 2008 data, 83.6% of consecutive-heartbeat gaps are within 15 minutes,
-89.8% within 30 and 91.0% within 60, so the three candidates sit in the flat part
-of the distribution rather than cutting through the mass of one-poll gaps. Their
+On the 2008 data, the vast majority (83.6%) of consecutive-heartbeat gaps are
+within 15 minutes, while 91.0% of the gaps are within 60. Their
 effect on the features is real but not dramatic: over March 2008 a character-month
 has a median of 4 sessions at any of the three gaps, and the mean falls from 15.2
 at 15 minutes to 12.0 at 60.
-
-Because it is a choice rather than a constant, the search tunes the definition of
-a session exactly like it tunes the learning rate — the boundary of the
-"behaviour" the model sees is part of the search space.
 
 #### What one night looks like
 
@@ -111,20 +111,19 @@ which become the features attached to that character's **April** row:
 | `monthly_avg_session_start` | 02:20 |
 | `monthly_avg_session_end` | 03:27 |
 
-Two details are worth spelling out. Session 1 is a single heartbeat, so its
-measured duration would be zero; `get_session_duration` gives it one minute
-instead, so that "logged in briefly" stays distinguishable from "never logged
-in". And the standard deviation is computed on microseconds rather than on the
-`Duration` column, because polars cannot take the std of a duration directly.
+A detail to note is the fact that Session 1 has a duration of 1 minute: this is 
+because it is a single heartbeat, and `get_session_duration` would assign it a
+duration of zero and it would look as if the player did not log in. A duration of
+1 minute ensures this difference is noticeable.
 
-#### A second sessionisation, for locations
+#### Sessionizing to generate complex features
 
-The same encoder runs again with `split_by=["char", "zone"]`, producing
-`timestamp_session_id_zone`. Those sessions measure how long a character stayed
-in a given zone, not how long they played, and they are what the location
+A second sessionization is executed to add location features, by running a new
+`SessionEncoder` with  `split_by=["char", "zone"]`, producing
+`timestamp_session_id_zone`. Those sessions measure _how long a character stayed
+in a given zone_, not how long they played, and they are what the location
 features are built on: time spent per zone, how much of it lands in "hub" zones
-that everyone visits, and how evenly it is spread. It is a separate pass with a
-separate column, so the two sessionisations never interfere.
+that everyone visits, and how evenly it is spread.
 
 ```python
 session_encoder_zone = SessionEncoder(
@@ -135,11 +134,12 @@ session_encoder_zone = SessionEncoder(
 )
 ```
 
-#### The whole path
+
+::: {.callout-note collapse="true"}
+#### Diagram of the session-based features (click to expand)
+
 
 ![](images/session_features.svg){fig-align="center"}
 
-Code: `main.py:151` and `main.py:203` (the two encoders in
-`build_feature_table`), `main.py:282` (`session_gap` as a choice),
-`src/utils.py:18` (`get_session_duration`), `adding_features.py:71`
-(`add_session_features`).
+
+:::

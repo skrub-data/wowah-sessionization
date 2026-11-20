@@ -5,22 +5,25 @@ execute:
   enabled: false
 ---
 
-<!--
-Drop-in replacement for `### 4. Location features in depth` in draft.qmd.
-Figure: images/zone_rarity.png (plotting/plot_zone_rarity.py).
-Numbers are measured on March 2008, session_gap = 30.
--->
 
-### 4. Location features in depth
+### Location features in depth
 
-Sessions answered *when* a character was playing. Their zones answer *where* —
-and where is a real signal in a game where the map is a level ladder and the
-capital cities are social hubs. The location block is the most involved one in
-the feature table, and it is built almost entirely out of a second sessionisation.
+The previous section on sessionization modeled *when* a character is online, and 
+their general time-specific behavior. This section focuses on answering *where* 
+a character spends their time, as character location should be a signal of whether
+they are a dedicated player (focusing on late-game areas), or someone less committed
+to the game.
 
-#### A second pass over the same beats
+While generating these features originally appeared to be a promising direction, 
+experimental results seem to show little to no impact on the actual prediction
+performance (see [Does the block earn its place?](does-the-block-earn-its-place)).
+We keep keep the investigation for historical reasons, and to showcase a different
+application of the `SessionEncoder`.
 
-The zone encoder is the same class, split on `(char, zone)` instead of `char`:
+#### Sessionizing over character and zone
+
+To generate the features, we use again the `SessionEncoder`, split on
+`(char, zone)` instead of `char`:
 
 ```python
 session_encoder_zone = SessionEncoder(
@@ -31,18 +34,19 @@ session_encoder_zone = SessionEncoder(
 )
 ```
 
-A zone session therefore runs from the first heartbeat in which a character is
-seen in a zone to the last one before they are seen somewhere else — a *visit*,
-not a play session. The two passes are independent: they add two different
-columns (`timestamp_session_id` and `timestamp_session_id_zone`), nothing is
-overwritten, and a character's play sessions are identical whether or not the
-location features are enabled. That is what makes `use_location` a plain skrub
-boolean choice rather than a different pipeline.
+A "zone session" is the interval between the first heartbeat in a zone, to the last
+one before they are seen somewhere else: this is a **visit**, not a play session. 
+The two session IDs are independent and touch different columns, and a character's
+sessions do not change whether or not the location features are enabled: this 
+means that `use_location` can be a plain
+[`choose_bool`](https://skrub-data.org/stable/reference/generated/skrub.choose_bool.html).
 
 Visits are much shorter than play sessions, because players move around inside
-a session. In March 2008 there are 385,715 zone sessions for 109,665 play
-sessions, the median visit is 9m 43s, and 49% of visits consist of a single
-heartbeat. Character 66560's 10h 01m of play shows up as 30 visits over 6 zones:
+a session. In March 2008, we measure ~385k zone sessions for 109k play sessions, 
+and 49% of the visits consist of a single heartbeat.
+
+This is a sample of Character 66560's session data for March 2008, where the 
+10 hours cover 30 visits over 6 zones:
 
 | zone | visits | time in zone | rarity | hub? |
 |-------------------------|:------:|--------------|-------:|:----:|
@@ -53,11 +57,11 @@ heartbeat. Character 66560's 10h 01m of play shows up as 30 visits over 6 zones:
 | Thunder Bluff | 1 | 10m 01s | 1.71 | no |
 | Orgrimmar | 12 | 1m 00s | 0.66 | yes |
 
-The `time in zone` column sums to less than the month's play time — 6h 52m
-against 10h 01m. That is not a bug: a visit is measured from the first to the
-last heartbeat *in that zone*, so the ten minutes between being seen in the
-Barrens and being seen in Wailing Caverns belong to neither. Across the whole
-month, zone time is 81% of play time.
+To note that since this is periodic polling of the data, session durations 
+have some caveats. Given that a visit is measured from the first to the last 
+hearbeat in a given zone, the ten minutes between one zone and another belong
+to neither. Additionally, a player may move between multiple zones between two
+polls and that would not be detected by the dataset. 
 
 #### Rarity: how special is a zone
 
@@ -69,17 +73,13 @@ $n_v$ the number that visited the zone:
 rarity=(n_unique_characters / pl.col("unique_visitors")).log()
 ```
 
-In March 2008 there are 8,429 characters across 122 zones, and the scale runs
-from Orgrimmar at 0.66 (4,370 visitors — the Horde capital, and the single busiest
-place in the data) to 9.04 for the zones with exactly one visitor. High rarity
-means "almost nobody comes here", and at the top of the scale it usually means a
-recording glitch rather than a discovery. The eight zones with exactly one
-visitor in March are Ironforge, Ahn'Qiraj, Blackwing Lair, Deeprun Tram,
-Teldrassil, The Exodar, Bloodmyst Isle and Quel'thalas — the first seven all
-pinned on level-70 Horde characters, and six of them Alliance or Blood Elf
-starting areas that no Horde character has any reason to be in. Ironforge is not
-a one-off either: it appears 259 times across 2008, always on Horde characters,
-never once on an Alliance race. Rarity measures the data, not the world, and the
+In March 2008 there are ~8,4k characters across 122 zones, and the scale runs
+from Orgrimmar at 0.66 (the Horde capital, and the single busiest
+place in the data) to 9.04 for the zones with exactly one visitor.
+
+High rarity means "almost nobody comes here", and at the top of the scale it
+usually means a recording glitch rather than a discovery. 
+Rarity measures the data, not the world, and the
 rarest observations are the ones most worth distrusting.
 
 The bottom decile of that scale marks the **hubs**: any zone with rarity below
@@ -99,10 +99,10 @@ questing corridors:
 | The Barrens | 2,012 | 1.43 | 28.9 |
 
 Note that a hub is not a "max-level zone": Durotar and the Barrens are starting
-areas with average levels under 30, and they qualify because they are *crowded*.
-The list mixes the two reasons a zone is busy — it is where you train and trade,
-or it is where you were sent at the current level cap — which is exactly why
-time spent in hubs is a weaker signal on its own than time spent out of them.
+areas with average levels under 30, so they are hubs only because they are *crowded*.
+The list of "hubs" mixes two reasons why a zone is busy: either, hubs are where
+players trade, or it's where they spend time at level cap. For this reason, the 
+time spent in hubs is a weaker signal on its own than the time spent out of them.
 
 #### Per-character aggregates
 
@@ -137,16 +137,8 @@ For character 66560 in March:
 visit is a level-70 raid has clearly progressed further than one who never left
 the starting zones. `in_hub` is meant to capture the opposite — how much of the
 month was spent idling in a capital rather than out in the world.
-
-The three zone-level columns measure something rarity cannot: the *content* a
-character is doing, as opposed to their own progress. `max_zone_level` and
-`mean_zone_level` are the average level of the characters seen in each zone, and
-`frac_endgame` is the share of visits to zones averaging level 60 or above. The
-distinction matters because a level-70 character grinding starter zones reads as
-at-cap by their own level but as unprogressed here — which is the signature that
-precedes churn. The two are only weakly related: across March 2008 the
-correlation between `max_rarity` and `max_zone_level` is 0.43, so they are not
-duplicates of each other.
+`in_hub`, `*_zone_level` and `frac_endgame` measure the _content_ a player is doing, 
+rather than their progress. 
 
 The aggregates
 are taken with `.over("char")` on the **heartbeat** table, not on the visit

@@ -45,7 +45,7 @@ through skrub's Data Ops.
 To keep the focus of this post on the process rather than the code, most of the 
 lower-level functions will be hidden in collapsible blocks, including much of 
 the pre-processing and feature engineering.
-The entire code is available in this [repository](https://github.com/rcap107/wowah-sessionization).
+The entire code is available in this [repository](https://github.com/skrub-data/wowah-sessionization).
 
 ## The dataset
 We rely on the [World of Warcraft Avatar History](https://qualinet.github.io/databases/world_of_warcraft_avatar_history_dataset/)
@@ -95,34 +95,7 @@ The dataset does not arrive as a table. It is 3.5 GB of text: 138,084 `.txt`
 files spread over 1,082 day folders, nested inside quarterly folders. Each file is 
 a dump of a **server snapshot**, stored as a txt file with a Lua-like syntax. 
 
-As we will see, Data Ops help with this, and indeed we include parsing the files in our
-pipeline. 
-Because a heartbeat table has to be rebuilt for every new set of files, the
-parser is not a one-off script but a function of the file list:
-`parse_files(file_paths)` returns a typed `DataFrame`. That is what lets
-`load` in `main.py` be a node of the plan, so refitting on the historical files
-and predicting on held-out files run the *same* parsing code on different
-inputs, instead of depending on a parquet someone generated earlier.
 
-Two details make that practical:
-
-- `process_single_file` parses one file; `parse_files` fans the work out over
-  `ProcessPoolExecutor`. On the machine used for this post, a full run of the
-  138k files takes about a minute, and `executor.map` preserves the file order,
-  so the resulting table is deterministic.
-- `list_raw_files(root_dir, start_date, end_date)` selects files by the **day**
-  folder, not the quarterly one. That precision is required because the split
-  between historical and held-out data is a monthly boundary, and a quarter
-  folder such as `2008_10_12` spans October, November and December: filtering
-  on the folder name would either leak December into training or drop October
-  from it. The two selections overlap on purpose — October 2008 is in both — so
-  the last training month can seed the features for the first scored month.
-  Counting the files: 132,042 in the historical set, 10,058 in the held-out set,
-  4,016 shared, 138,084 in total.
-
-
-
-:::
 
 ::: {.callout-note collapse="true"}
 #### More detail on the dataset and parsing
@@ -179,15 +152,39 @@ them to a proper dataframe:
 | `zone` | `String` | Durotar, The Barrens… |
 
 
-While the parsing operation is part of the Data Ops pipeline, for convenience 
+For convenience 
 and to prepare dataframes that can be used for exploration we publish a 
-[separate script](https://github.com/rcap107/wowah-sessionization/blob/main/src/parse_to_single_table.py),
+[separate script](https://github.com/skrub-data/wowah-sessionization/blob/main/src/parse_to_single_table.py),
 to convert the text files in parquet, and we publish the resulting dataframe on
 [Kaggle: World of Warcraft Avatar History 2006-2009](https://www.kaggle.com/datasets/ryye107/world-of-warcraft-avatar-history).
 
 ::: 
 
 
+
+Data Ops let us include parsing the files in the pipeline: this ensures that the 
+same pre-processing that is used to train the predictive model is replayed exactly
+on unseen data when it becomes available. 
+
+Since a heartbeat table has to be rebuilt for every new set of files, the
+parser is not a one-off script but a function of the file list:
+`parse_files(file_paths)` returns a typed `DataFrame`. That is what lets
+`load` in `main.py` be a node of the plan, so refitting on the historical files
+and predicting on held-out files run the *same* parsing code on different
+inputs, instead of depending on a parquet someone generated earlier.
+
+Two details make that practical:
+
+- `process_single_file` parses one file; `parse_files` fans the work out over
+  `ProcessPoolExecutor`. On the machine used for this post, a full run of the
+  138k files takes about a minute.
+- `list_raw_files(root_dir, start_date, end_date)` selects files by the **day**
+  folder, not the quarterly one. That precision is required because the split
+  between historical and held-out data is a monthly boundary, and a quarter
+  folder such as `2008_10_12` spans October, November and December: filtering
+  on the folder name would either leak December into training or drop October
+  from it. The two selections overlap on purpose — October 2008 is in both — so
+  the last training month can seed the features for the first scored month.
 
 ### A quick exploration of the dataset
 We begin by loading the historical dataset with all the timestamps. To keep the
@@ -271,11 +268,6 @@ In other words, a row at month M means **"act during month M, using data up to t
 :::
 
 ![](images/diagram-months-churn.png)
-
-The idea is that, by knowing that user X is likely to churn, we should be able to 
-use the month of June to apply some incentive to the user so they won't churn. 
-Note that, in the diagram, a character that is absent in the target month has only
-churned if it was also absent in the "gap month".
 
 ::: {.callout-warning}
 #### Why we're predicting one month in the future
@@ -362,8 +354,8 @@ user_month.collect()
 
 :::
 
-The grid extends three months past the end of the data. Their target is unknown, so
-these rows are dropped later and never reach the model.
+The grid extends three months past the end of the data to make sure the learner
+does not crash with unseen data. 
 
 Now that we have all the combinations (character, month), we can join back the 
 prepared data to mark all the months in which each character was found online, 
@@ -504,7 +496,9 @@ The features of a row at month M are computed from the activity of month M-1 onl
 They fall in a few groups:
 
 - fixed attributes of the character: race and class;
-- **session features**: skrub's `SessionEncoder` groups consecutive heartbeats of a 
+- **session features**: skrub's
+  [SessionEncoder](https://skrub-data.org/dev/reference/generated/skrub.SessionEncoder.html)
+  groups consecutive heartbeats of a 
   character into sessions, which gives the number of sessions in the month, and the 
   total, average and standard deviation of their duration, and the average start 
   and end time;
@@ -520,12 +514,18 @@ They fall in a few groups:
   see trends.
 
 The functions that compute them live in 
-[adding_features.py](https://github.com/rcap107/wowah-sessionization/blob/main/adding_features.py).
+[adding_features.py](https://github.com/skrub-data/wowah-sessionization/blob/main/adding_features.py).
 The function below loops over the months, and for each one filters the historical 
 data down to the previous month before building the features. Because lagged features 
 need each character's complete timeline, the feature table is built once for every 
 (character, month) pair, independently of the cross-validation split, and each split 
 only selects its rows from it.
+
+{{< include sections/sessionization.qmd >}}
+
+{{< include sections/location_features.qmd >}}
+
+
 
 ::: {.callout collapse="true" }
 #### Full feature engineering function (click to expand)
@@ -575,6 +575,8 @@ show(make_data_op)
 ```
 
 :::
+
+
 
 ### Running it
 The data op is evaluated by passing a list of raw log file paths as input --
