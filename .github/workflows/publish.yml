@@ -1,0 +1,42 @@
+name: Publish site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: latest
+          cache: true
+
+      # The blog post's code cells are frozen (_freeze/ is committed), so the
+      # 4 GB raw dataset in data/ is not needed here. The environment still
+      # provides Quarto and the Python packages the documents import.
+      - name: Render site
+        run: pixi run render
+
+      # Publish docs/ to the gh-pages branch, the same branch that
+      # `quarto publish gh-pages` uses locally.
+      - name: Publish to gh-pages
+        run: |
+          cd docs
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Publish site from ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages

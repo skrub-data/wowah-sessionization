@@ -1,0 +1,38 @@
+---
+title: "WoWAH Player Churn Prediction"
+subtitle: "Predicting player churn in World of Warcraft from heartbeat data"
+toc: false
+number-sections: false
+---
+
+This site collects two write-ups on predicting player churn in the
+[World of Warcraft Avatar History](https://qualinet.github.io/databases/world_of_warcraft_avatar_history_dataset/)
+dataset with [skrub](https://skrub-data.org/) Data Ops.
+
+:::: {.grid}
+::: {.g-col-12 .g-col-md-6 .card .p-3 .mb-3}
+### [Blog post](draft.html)
+
+A step-by-step walk-through of the pipeline: from the raw heartbeat logs to a
+monthly churn model, covering the data preparation, the custom time-aware
+splitter and the skrub Data Op that ties everything together.
+
+[Read the post](draft.html){.btn .btn-primary}
+:::
+
+::: {.g-col-12 .g-col-md-6 .card .p-3 .mb-3}
+### [Slides](skrub-dataops.html)
+
+The talk version: what skrub Data Ops are, why they matter on a real project,
+and the pain points they solve, illustrated on the same churn pipeline.
+
+[Open the slides](skrub-dataops.html){.btn .btn-primary}
+:::
+::::
+
+## Data and code
+
+The pipeline, the notebooks and the raw data preparation live in the
+[repository](https://github.com/rcap107/wowah-sessionization). The execution
+report of the Data Op is available
+[here](reports/execution_report/index.html){target="_blank"}.

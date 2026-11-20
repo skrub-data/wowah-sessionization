@@ -4,19 +4,26 @@ project:
   output-dir: docs
   render:
     - "*.qmd"
+    # Draft sections are included into draft.qmd; do not publish them standalone.
+    - "!sections/**"
   resources:
     - "reports/**"
 
 website:
   title: "WoWAH Player Churn Prediction"
+  site-url: https://rcap107.github.io/wowah-sessionization/
+  repo-url: https://github.com/rcap107/wowah-sessionization
+  repo-actions: [source]
   navbar:
     title: "WoWAH Churn Prediction"
     search: true
     left:
       - text: "Home"
         href: index.html
-      - text: "Blog"
+      - text: "Blog post"
         href: draft.html
+      - text: "Slides"
+        href: skrub-dataops.html
 
 format:
   html:
@@ -29,7 +36,7 @@ format:
     highlight-style: github
     self-contained: false
     smooth-scroll: true
-    css: custom.css
+    css: style.css
 
 execute:
   freeze: auto

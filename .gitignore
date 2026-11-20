@@ -16,7 +16,9 @@ __pycache__/
 **/.DS_Store
 # Quarto caches (regenerated on render)
 .jupyter_cache/
-_freeze/
+# _freeze/ is tracked on purpose: the blog post's code cells need the 4 GB raw
+# dataset in data/ (git-ignored), so the frozen results are what lets the
+# GitHub Actions workflow render the site without the data.
 # Generated reports and plots. The execution report and exploration plots are
 # tracked because they are embedded/rendered into the published docs.
 /reports/*

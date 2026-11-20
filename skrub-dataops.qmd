@@ -6,6 +6,7 @@ institute: "Inria P16, `:probabl.`"
 format:
   revealjs:
     code-line-numbers: false
+    css: style.css
 slide-number: true
 template-partials:
     - title-slide.html
