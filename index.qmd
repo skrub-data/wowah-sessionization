@@ -33,6 +33,6 @@ and the pain points they solve, illustrated on the same churn pipeline.
 ## Data and code
 
 The pipeline, the notebooks and the raw data preparation live in the
-[repository](https://github.com/rcap107/wowah-sessionization). The execution
+[repository](https://github.com/skrub-data/wowah-sessionization). The execution
 report of the Data Op is available
 [here](reports/execution_report/index.html){target="_blank"}.

@@ -69,9 +69,8 @@ treated as a project dependency.
 ## Publishing
 
 The site is published to GitHub Pages at
-<https://www.riccardocappuzzo.com/wowah-sessionization/> (the custom domain of
-the `rcap107.github.io` user site; `rcap107.github.io/wowah-sessionization/`
-redirects there).
+<https://skrub-data.org/wowah-sessionization/> (the custom domain of the
+`skrub-data.github.io` organisation site).
 
 - `.github/workflows/publish.yml` renders the site on every push to `main` and
   force-pushes `docs/` to the `gh-pages` branch, which Pages serves.

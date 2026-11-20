@@ -108,7 +108,7 @@ renders the documents into `docs/`.
 ## Website
 
 The documents are published as a Quarto website at
-<https://www.riccardocappuzzo.com/wowah-sessionization/>: `index.qmd` is the
+<https://skrub-data.org/wowah-sessionization/>: `index.qmd` is the
 landing page and links to the blog post (`draft.qmd`) and the slides
 (`skrub-dataops.qmd`). A push to `main` triggers
 `.github/workflows/publish.yml`, which renders the site and pushes `docs/` to
