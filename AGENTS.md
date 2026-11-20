@@ -268,6 +268,14 @@ Without it you get `BrokenProcessPool` or a `RuntimeError` about
 - Keep plotting scripts reproducible: fixed data paths, no interactive display
   by default, and a `# %%` cell layout consistent with the other files in
   `plotting/`.
+- **Every matplotlib figure uses the `seaborn-v0_8-talk` preset.** Start the
+  plotting code with `plt.style.use("seaborn-v0_8-talk")` and do not hard-code
+  `fontsize=` values that undercut it. The preset already sets 14.3 pt axis
+  labels, 15.6 pt titles and 13 pt ticks and legends, which is what keeps the
+  figures readable once they are scaled down to a blog column or a slide. Only
+  override a size when the preset genuinely does not fit (for example the 24
+  hourly labels of a polar clock), and then stay close to it. Size the figure
+  to the larger fonts rather than shrinking the fonts back down.
 
 ## Before handing off a change
 
