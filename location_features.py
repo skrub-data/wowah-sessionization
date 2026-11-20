@@ -10,6 +10,8 @@ from skrub._session_encoder import SessionEncoder
 
 from src.utils import get_session_duration, sample_by_user
 
+plt.style.use("seaborn-v0_8-talk")
+
 df = pl.read_parquet("data/wowah_data_2008.parquet")
 
 # df = sample_by_user(df)
