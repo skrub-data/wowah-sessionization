@@ -738,6 +738,73 @@ class Splitter:
 <iframe src="reports/execution_report/index.html" width="100%" height="480px" style="border: 1px solid #ccc; border-radius: 4px;"> </iframe>
 
 
+## Pain point 5 — The parse runs 63 times {.smaller}
+
+Parsing is a **node of the plan**, not a preprocessing step — that is what lets
+the same graph run on unseen files. But `cross_validate` evaluates the plan once
+per fit and once per score:
+
+$$31 \text{ folds} \times 2 + 1 = 63 \text{ evaluations}$$
+
+Each one parses all 132,042 heartbeat files: **68 s** per parse, **~71 minutes**
+of parsing alone, before any feature engineering or model fitting.
+
+```python
+CACHE_DIR = Path(__file__).parent / ".skrub_cache"
+skrub.set_config(cache=str(CACHE_DIR))
+```
+
+## Pain point 5 — The parse runs 63 times {.smaller}
+
+| | wall time | `parse_files` calls |
+|---|---:|---:|
+| cache off | ~75 min (extrapolated) | 63 |
+| cache cold | 289 s | 1 |
+| cache warm | 213 s | 0 |
+
+::: {.fragment}
+Two different savings, often confused:
+
+- **cache off → cache on**: 63 parses → 1. About **15× faster**.
+- **cache cold → cache warm**: 1 parse → 0. 289 s → 213 s, about **26%**.
+
+The 26% is what you get on the second run of the day. The 15× is the difference
+between a run you can iterate on and a run you leave overnight.
+:::
+
+## Pain point 5 — The cache does not know your code changed {.smaller}
+
+joblib keys a cached call on the **cached function's own source** plus its
+arguments — not on the functions that function calls. Editing
+`adding_features.py` would keep serving the old feature table, silently.
+
+```python
+def _source_fingerprint(*modules):
+    digest = hashlib.sha256()
+    for module in modules:
+        digest.update(Path(module.__file__).read_bytes())
+    return digest.hexdigest()[:16]
+
+FEATURES_FINGERPRINT = _source_fingerprint(
+    sys.modules[__name__],
+    sys.modules["add_churn"],
+    sys.modules["adding_features"],
+)
+```
+
+`build_feature_table(..., _fingerprint=None)` does `del _fingerprint`: the
+argument exists only to change the cache key.
+
+| Node | Fingerprinted? | Covers |
+|---|---|---|
+| `load` | no | parser is frozen |
+| `build_feature_table` | yes | `main.py`, `add_churn.py`, `adding_features.py` |
+
+**Add any new module `build_feature_table` calls to the fingerprint**, or edits
+to it will be ignored. The cache is 587 MB and git-ignored; deleting it is always
+safe, and costs a full recompute.
+
+
 # Conclusions
 
 ## What have we seen so far? {.smaller}
