@@ -59,7 +59,7 @@ treated as a project dependency.
 - `execute: cache: true` and `jupyter-cache` are configured, so re-renders reuse
   cached results. Use `pixi run quarto render <file> --no-cache` when a code
   cell must actually re-execute.
-- `skrub-dataops.qmd` and `pain_points.qmd` are RevealJS slide decks;
+- `skrub-dataops.qmd` is a RevealJS slide deck;
   `draft.qmd` and `skrub-dataops.qmd` are the write-ups of record.
 
 ## Python
@@ -77,33 +77,63 @@ treated as a project dependency.
 
 The raw corpus is **132,042 `.txt` heartbeat files (~4 GB)** under
 `data/raw/WoWAH/`, organised as `YYYY_MM_DD/YYYY-MM-DD/HH-MM.txt`. Parsing all of
-them takes minutes and is the single most expensive step in the project.
+them takes ~75 s and is the single most expensive step in the project.
 
 ### The DataOp cache is on by default
 
 `main.py` calls `skrub.set_config(cache=".skrub_cache")` at import time, so any
-plan built with `make_data_op` reuses previously computed nodes. Measured on the
-full corpus at `load_fraction=0.1`: a cold `cross_validate` parses 63 times and
-takes ~413s; with the cache warm it parses once and takes ~69s.
+plan built with `make_data_op` reuses previously computed nodes.
+
+Measured on this machine (Apple M3, 8 cores) at `load_fraction=0.1`, over the 31
+folds the `Splitter` yields:
+
+| | wall time | `parse_files` calls |
+|---|---:|---:|
+| cache off | ~75 min (extrapolated) | 63 |
+| cache cold | 289 s | 1 |
+| cache warm | 213 s | 0 |
+
+A single `parse_files` over the 132,042 historical files takes **68 s** and
+returns 34.9M rows. `cross_validate` evaluates the plan once per fit and once
+per score, so an uncached run parses the same files **63 times** (31 folds × 2
++ 1) — about 71 minutes of parsing alone. That is the "game changer": the cache
+turns a ~75-minute run into a ~5-minute one, roughly **15× faster**.
+
+The cache-off figure is extrapolated rather than measured end to end: an
+uncached `cross_validate` was still running after 30 minutes and was stopped.
+The 63-call count and the 68 s per-call cost were measured directly (the parse
+was memoized so the count could be taken without paying 63 × 68 s).
+
+Once the cache is cold, the remaining saving is smaller: 289 s → 213 s, about
+26%. The 213 s warm run is ~68 s of parsing plus ~145 s of model fitting and
+encoding. So the cache is worth having for two distinct reasons — it removes
+the 63× re-parse on a fresh run, and it skips the single parse on a repeat run.
+
+The `Splitter` yields 31 folds over the historical window (2006-03 → 2008-09).
 
 The cache is git-ignored and lives at `.skrub_cache/` in the repository root.
 Delete that directory to force a full recompute.
 
 **The cache does not invalidate itself when the code changes.** joblib keys a
 cached call on the *cached function's own source* plus its arguments — it does
-not look at the functions that function calls. Editing `parse_files` would
-therefore keep serving the old parse forever. `main.py` works around this by
-passing a source fingerprint as an extra argument of the two expensive nodes:
+not look at the functions that function calls. Editing `adding_features.py`
+would therefore keep serving the old feature table forever. `main.py` works
+around this by passing a source fingerprint as an extra argument of
+`build_feature_table`:
 
-| Node | Fingerprint covers |
-|---|---|
-| `load` | `src/parse_to_single_table.py`, `src/utils.py` |
-| `build_feature_table` | `main.py`, `add_churn.py`, `adding_features.py` |
+| Node | Fingerprinted? | Covers |
+|---|---|---|
+| `load` | no | — (parser is frozen) |
+| `build_feature_table` | yes | `main.py`, `add_churn.py`, `adding_features.py` |
 
-They are separate on purpose: editing feature code must not throw away the
-(much more expensive) parsed logs. **If you add a new module that either node
-calls into, add it to the corresponding `_source_fingerprint(...)` call**, or
-edits to it will be silently ignored.
+**If you add a new module that `build_feature_table` calls into, add it to the
+`_source_fingerprint(...)` call**, or edits to it will be silently ignored.
+
+The parse node is not fingerprinted because the parser is frozen: the guard
+would only ever fire on a change that is not going to happen. The cost is that
+editing `src/parse_to_single_table.py` is not detected — delete `.skrub_cache/`
+by hand if you ever do. This is a tidiness trade-off, not a correctness one, and
+the fingerprint may be removed entirely later for the same reason.
 
 ### A full parse already exists
 
@@ -176,9 +206,18 @@ launching anything that touches the raw files or the full feature table:
 - never leave a command running for tens of minutes without output — if it
   produces nothing for a few minutes, stop it and find out why.
 
-A cold run of the whole plan is ~86s at `load_fraction=0.02` and ~7 minutes at
-`load_fraction=0.1`; a warm run of the same is 1–3s. If a run is slow, check
-whether the cache is actually being hit before assuming the code is at fault.
+Measured `cross_validate` wall time on this machine:
+
+| `load_fraction` | cold | warm |
+|---|---:|---:|
+| 0.02 | 170 s | 86 s |
+| 0.1 | 289 s | 213 s |
+
+A single `.eval()` (one fit, no cross-validation) is ~5 s warm. If a run is
+slow, check whether the cache is actually being hit before assuming the code is
+at fault — and note that "warm" is only ~26% faster at 0.1, because the
+remaining time is model fitting and encoding, not parsing. The big win is
+cache-off vs cache-on, not cold vs warm.
 
 ### macOS needs a `__main__` guard
 
