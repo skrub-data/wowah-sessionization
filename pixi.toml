@@ -7,7 +7,6 @@ platforms = ["osx-arm64", "linux-64"]
 [dependencies]
 python = ">=3.12"
 polars = ">=1.30"
-skrub = ">=0.11"
 scikit-learn = ">=1.7"
 numpy = "*"
 pandas = "*"
@@ -22,6 +21,7 @@ tqdm = "*"
 graphviz = "*"
 pydot = "*"
 
+
 # Rendering and executing the .qmd files (blog post and slides). Quarto runs
 # them through the "python3" Jupyter kernel declared in _quarto.yml, and
 # `cache: true` in _quarto.yml stores results with jupyter-cache.
@@ -32,6 +32,11 @@ ipython = "*"
 nbformat = "*"
 nbclient = "*"
 jupyter-cache = "*"
+
+
+[pypi-dependencies]
+skrub = {git = "git+https://github.com/skrub-data/skrub.git"}
+
 
 # Lets scripts in subfolders (plotting/) import `src.utils`
 [activation.env]
@@ -66,4 +71,4 @@ plot-user-months = { cmd = "python plot_user_months.py", cwd = "plotting" }
 # Render the whole site (all *.qmd in _quarto.yml) into docs/
 render = "quarto render"
 render-draft = "quarto render draft.qmd"
-render-slides = "quarto render skrub-dataops.qmd && quarto render pain_points.qmd"
+render-slides = "quarto render skrub-dataops.qmd"
