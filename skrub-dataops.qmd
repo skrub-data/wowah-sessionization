@@ -11,6 +11,8 @@ template-partials:
     - title-slide.html
 ---
 
+
+
 ## Skrub {.smaller}
 
 Machine learning on tabular data
@@ -249,7 +251,7 @@ learner.predict(
 
 # Act 2: Dataset and problem
 
-![World of Warcraft original cover](images/World_of_Warcraft.png)
+![](images/World_of_Warcraft.png)
 
 ## What are we here for?  {.smaller}
 - **The dataset**: World of Warcraft Avatar history Dataset [^1]
@@ -258,9 +260,6 @@ learner.predict(
 
 
 ::: {.fragment}
-
-
-
 
 
 - **The problem**: Some players eventually stop playing, and thus stop paying
@@ -320,14 +319,6 @@ and perform various activities.
 - ~35.6M timestamped "character is active" lines (**heartbeats**). 
 - Time range: 2005-12-31 / 2009-01-10 in the 
 **Taiwanese server**.
-- Two expansions are included in the range:
-  - The Burning Crusade (April 2007)
-  - Wrath of the Lich King (November 2008).  
-- Expansions add content and lead to an influx of new and old players. 
-
-
-## Raw data structure {.smaller}
-
 
 ::: {.columns}
 
@@ -358,8 +349,7 @@ WoWAH
 
 **Content of a single log file**
 
-```
-# head WoWAH/2006_01_03/2006-01-01/00-03-56.txt 
+```{.lua}
 Persistent_Storage = {
 	[1] = "0, 12/31/05 23:59:46, 1,0, , 5, Orc, Warrior, Durotar, no, 0",
 	[2] = "0, 12/31/05 23:59:46, 1,1, , 9, Orc, Shaman, Durotar, yes, 0",
@@ -382,68 +372,15 @@ Persistent_Storage = {
 
 ## Feature engineering: defining sessions {.smaller}
 
+We want to model player behavior by measuring statistics about **playing sessions**. 
+
+- How many sessions does a player have in a month?
+- How long do they last? 
+- Do they have a consistent duration? 
+
 `skrub.SessionEncoder` turns heartbeats into **sessions**:
 
-- A heartbeat joins the current session if it arrives **at most `session_gap`**
-minutes after the previous heartbeat of the same character.
-- It only **adds a column** (`timestamp_session_id`): the rows and their order are
-unchanged, so it can be applied inside the feature function.
-- Sessions are then reduced to monthly features: number of sessions, total / mean /
-std of their duration, mean start and end time.
-
-::: {.fragment}
-
-- **The gap is a decision**, not a constant: `session_gap` is a tuned choice,
-`choose_from([30, 60, 15])`, and the encoder is **refit for every month**.
-- **It is run twice**: once per character, and once per `(char, zone)` to give the
-location features the time spent in each zone.
-
-:::
-
-## From heartbeats to sessions {.smaller}
-
-::: {.columns}
-
-::: {.column width="52%"}
-
-**One character, one night (gap = 30 min)**
-
-| beat | gap to previous | session |
-|--------|-----------|:-----:|
-| 21:51:06 | — | **0** |
-| 22:00:50 | 9m 44s | 0 |
-| 22:11:23 | 10m 33s | 0 |
-| 22:21:07 | 9m 44s | 0 |
-| 23:11:21 | **50m 14s** | **1** |
-| 23:21:04 | 9m 43s | 1 |
-| 23:41:22 | 20m 18s | 1 |
-| 23:51:05 | 9m 43s | 1 |
-
-:::
-
-::: {.column width="48%"}
-
-::: {.fragment}
-
-- A gap **larger than `session_gap`** is the only thing that opens a new session.
-- The encoder **adds one column** and leaves every row and its order untouched.
-- The gap is a tuned choice (15 / 30 / 60), so this boundary is a **pipeline
-hyperparameter**, not a constant.
-
-:::
-
-:::
-
-:::
-
-::: {.notes}
-This is char 66560 on 2008-03-14, straight from the parquet. Note the 20m 18s gap:
-it is smaller than 30 minutes, so it stays inside session 1, while the 50m 14s gap
-splits. At 15 minutes the night would be 3 sessions; at 60 minutes, 1 — the same
-night as the previous slide.
-:::
-
-## Same beats, different sessions {.smaller}
+## Choosing the session gap {.smaller}
 
 ::: {.columns}
 
@@ -455,14 +392,18 @@ night as the previous slide.
 
 ::: {.column width="38%"}
 
-One night of one character, the same heartbeats, three gaps:
+Depending on the session gap, the same heartbeats can lead to different sessions:
 
 - **15 min** → 3 sessions
 - **30 min** → 2 sessions
 - **60 min** → 1 session
 
-The gap is where the pipeline's **definition of "playing"** is set: every session
-feature downstream changes with it.
+
+::: {.callout-important}
+
+Every feature down the line depends on the session gap. 
+
+:::
 
 :::
 
@@ -618,9 +559,17 @@ def make_data_op():
 ...
 data_op, X = make_data_op()
 learner = data_op.skb.make_learner()
-learner.fit(environment={"raw_files": "historical_data/"})
+learner.fit(
+    environment={
+        "raw_files": "historical_data/"
+    }
+)
 
-predictions = learner.predict(environment={"raw_files": "latest_month/"})
+predictions = learner.predict(
+    environment={
+        "raw_files": "latest_month/"
+        }
+    )
 ...
 ```
 
@@ -730,9 +679,8 @@ class Splitter:
 
 ## Pain point 4 - Debugging and inspecting a pipeline
 
-<iframe src="reports/execution_report/index.html" width="100%" height="600px" style="border: 1px solid #ccc; border-radius: 4px;"> </iframe>
+[Data Ops execution report](reports/execution_report/index.html){target="_blank"}
 
-## Pain point 4 - Debugging and inspecting a pipeline
 - Data Ops reports provide rich information about each node
 - The source code used to generate a Data Op is bundled with it
 - When a preview or environment is provided, intermediate results can be shown
@@ -786,18 +734,19 @@ skrub.set_config(cache=str(CACHE_DIR))
 
 # Conclusions
 
-## 
+## Main takeaways {.smaller}
 
 ::: {.columns}
 
 ::: {.column}
 
+::: {.incremental}
+- skrub is a cool package 😎
+- Pre-processing should not be seen as separate from building your predictive pipeline 🔧
+- Data Ops mitigate and address issues throughout the development of the pipeline 🚒
+- Good libraries and abstractions are even more important in the age of agents 🤖
 
-- Data science is harder than what you learn in classes
-- A full ML pipeline involves [**preprocessing**]{.emph}, **feature engineering** and **model training**
-- We want to learn a "state" (it's called machine [**learning**]{.emph} after all), [**evaluate performance**]{.emph} and do so while avoiding [**data leakage**]{.emph}
-- [**Data Ops**]{.emph} are a framework that allows to build [**stateful pipelines**]{.emph} for
-[**arbitrary code and inputs**]{.emph}
+:::
 
 :::
 
