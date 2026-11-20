@@ -152,22 +152,22 @@ estimator.predict(X_new)</code></pre>
 ## 
 To build a ML pipeline, we need to:
 
-- preprocess the data, perform feature engineering, train a model ... 
+- **preprocess the data**, perform **feature engineering**, (**train a model**) ... 
+- with [**multi-source input**]{.emph} ... 
 - so we need to [**learn a state**]{style="color: #1a5a8a; font-weight: bold;"}... 
 - while we [**evaluate the predictive performance**]{style="color: #1a5a8a; font-weight: bold;"}... 
 - as we avoid [**data leakage**]{style="color: #1a5a8a; font-weight: bold;"}... 
-- with multi-source input ... 
 
-How do we deal with that? 
+How do we deal with all that? 
 
 ## With Data Ops... {.smaller}
 
 - Cross-validate without [**data leaks**]{style="color: #1a5a8a; font-weight: bold;"}: `fit()` on training
 and `predict()` on unseen data. 
-- [**Tune choices**]{style="color: #1a5a8a; font-weight: bold;"} with hyperparameter tuning and validation scores.
+- Perform [**problem-specific data processing**]{.emph} and data wrangling with sample filtering, joins and aggregations, multiple inputs and dynamic arguments.
+- [**Tune the architecture of the pipeline**]{style="color: #1a5a8a; font-weight: bold;"} with hyperparameter tuning and validation scores.
 - Replay on [**new inputs**]{style="color: #1a5a8a; font-weight: bold;"}.
-- **Arbitrary data processing** and data wrangling with sample filtering, joins and aggregations, multiple inputs and dynamic arguments.
-- **Inspect** the pipeline step-by-step, **persist** the source code that generates a model.
+- [**Inspect**]{.emph} the pipeline step-by-step, [**persist**]{.emph} the source code that generates a model.
 
 ## Basic example {.smaller auto-animate="true"}
 
@@ -190,7 +190,7 @@ X = data.drop(columns="target", errors="ignore").skb.mark_as_X()
 y = data["target"].skb.mark_as_y()
 X_join = X.merge(hist, on="id", how="left")
 pred = X_join.skb.apply(
-    StandardScaler()
+    StandardScaler(), cols=s.numeric()
 ).skb.apply(LogisticRegression(), y=y)
 ```
 
@@ -249,6 +249,63 @@ learner.predict(
 
 :::
 
+
+## Basic example {.smaller auto-animate="true"}
+
+
+::: {.columns}
+
+::: {.column width=60%}
+
+Cross-validate
+
+```{.python code-line-numbers="|2-5|"}
+pred.skb.cross_validate(
+    environment={
+        "data_path": "historical_data.csv",
+        "hist_path": "archive.csv"
+    }
+)
+```
+
+::: {.fragment}
+
+
+Make a "learner" (object with `fit()` & `predict()`)
+
+```{.python code-line-numbers="|2,7|3-6|8,13|9-12|"}
+learner = pred.skb.make_learner(
+).fit(
+    environment={
+        "data_path": "historical_data.csv",
+        "hist_path": "archive.csv"
+    }
+)
+learner.predict(
+    environment={
+        "data_path": "new_data.csv",
+        "hist_path": "archive.csv"
+    }
+)
+```
+
+
+:::
+
+
+
+:::
+
+::: {.column width=40%}
+
+
+
+![](images/model_graph.svg)
+
+
+:::
+
+:::
 
 # Act 2: Dataset and problem
 
@@ -453,13 +510,6 @@ Every feature down the line depends on the session gap.
 
 :::
 
-::: {.fragment}
-
-Session 1 is a **single heartbeat**: `get_session_duration` gives it 1 minute, so
-"logged in briefly" ≠ "never logged in".
-
-:::
-
 :::
 
 :::
@@ -483,7 +533,6 @@ signal.
 - Lagged features 
 - `skrub.TableVectorizer` to encode 
 
-More detail about feature engineering and model selection is available in the full technical report. 
 
 ## Model selection
 
@@ -511,8 +560,9 @@ measure we decide to implement, so we can only try to **predict player behavior*
 
 - Data is not clean: heartbeats are in **text files** scattered over **hundreds of folders**
 rather than in a more manageable format. 
-- Once transformations are learned, they need to be **replayed on new data**. 
 - Boilerplate code and pre-processing scripts are **brittle** and **prone to errors**.
+- Once transformations are learned, they need to be **replayed on new data**, 
+**including the pre-processing**.
 
 
 ## Pain point 1 - Data preparation is part of the pipeline {.smaller}
@@ -529,15 +579,16 @@ def make_data_op():
     raw_files = skrub.var("raw_files")
     historical_data = raw_files.skb.apply_func(load)
 
-    user_month_has_played = historical_data.skb.apply_func(
+    user_month = historical_data.skb.apply_func(
         build_churn_dataset
     ).skb.set_name("query")
     
-    X = user_month_has_played["char", "month"].skb.mark_as_X(...)
-    y = user_month_has_played["churn_next"].skb.mark_as_y()
+    X = user_month["char", "month"].skb.mark_as_X(...)
+    y = user_month["churn_next"].skb.mark_as_y()
 
     feature_table = historical_data.skb.apply_func(build_feature_table)
-    encoded = feature_table.skb.apply(skrub.TableVectorizer())
+    all_features = X.skb.apply_func(add_features, feature_table)
+    encoded = all_features.skb.apply(skrub.TableVectorizer())
     data_op = encoded.skb.apply(HGBC(), y=y)
     return data_op
 
@@ -556,7 +607,7 @@ def make_data_op():
 
 **Exporting the learner**
 
-```{.python}
+```{.python code-line-numbers="|4,8|5-7|10,14|11-13|"}
 ...
 data_op, X = make_data_op()
 learner = data_op.skb.make_learner()
@@ -621,7 +672,7 @@ predictions = learner.predict(
 ::: {.column width=55%}
 
 
-```{.python}
+```{.python code-line-numbers="|1-2|6-9|10-13|"}
 class Splitter:
     def split(self, X, y=None):
         ...
@@ -645,8 +696,8 @@ class Splitter:
 ## Pain point 3 — Tuning the architecture of the pipeline, not just model knobs {.smaller auto-animate="true"}
 
 - Model choices are not limited to model hyperparameters: `session_gap` (15/30/60 min), include location features?, which lags?
-- These are **data pipeline decisions**, with big performance and runtime impact
-- Pipeline decisions **modify the pipeline itself**, and regular hyperparameter tuning does not work
+- These are [**data pipeline decisions**]{.emph}, with big performance and runtime impact
+- Pipeline decisions [**modify the pipeline itself**]{.emph}, and regular hyperparameter tuning does not work
 
 ## Pain point 3 — Tuning the architecture of the pipeline, not just model knobs {.smaller auto-animate="true"}
 ```{=html}
@@ -673,7 +724,7 @@ class Splitter:
 - One call to `skb.make_randomized_search(backend="optuna", ...)` turns the whole DAG into a search 
 
 ## Pain point 4 - Debugging and inspecting a pipeline
-- Inspecting a regular pipeline is complex and requires programmatic access
+- Inspecting a regular pipeline is complex and requires **programmatic access**
 - The result of intermediate steps is hard to access without re-executing everything
 - Once deployed, it is hard to maintain a trained model ("why was this step needed?", 
 "where is the source code?")
@@ -691,7 +742,7 @@ class Splitter:
 ## Pain point 5 — The Need for Caching {.smaller}
 
 - Parsing is a **node of the plan**, rather than a separate pre-processing step
-- Cross-validation re-evaluates the entire plan => parsing is repeated in each fold
+- Cross-validation **re-evaluates** the entire plan => parsing is repeated in each fold
 - We need to choose between **keeping parsing in the pipeline** and **quick iteration**
 
 
@@ -717,7 +768,7 @@ This is exactly what we want caching for!
 
 ## Pain point 5 — The Need for Caching {.smaller}
 
-- Data Ops can be cached! 
+- Data Ops can be **cached**! 
 - Joblib caching is used to avoid repeating the same operations if no code changes
 have happened. 
 
@@ -753,7 +804,7 @@ skrub.set_config(cache=str(CACHE_DIR))
 
 ::: {.column}
 
-TODO Repo QR code
+![Website with slides and writeup](images/qr-code-website.png)
 
 :::
 
