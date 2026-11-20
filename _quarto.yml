@@ -11,7 +11,7 @@ project:
 
 website:
   title: "WoWAH Player Churn Prediction"
-  site-url: https://rcap107.github.io/wowah-sessionization/
+  site-url: https://www.riccardocappuzzo.com/wowah-sessionization/
   repo-url: https://github.com/rcap107/wowah-sessionization
   repo-actions: [source]
   navbar:

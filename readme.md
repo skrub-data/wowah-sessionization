@@ -41,7 +41,7 @@ Let `M` be the month in which we score a character (and could act on it).
 | `src/parse_to_single_table.py`, `src/convert_to_parquet.py` | Parse the raw WoWAH `.txt` logs to CSV, then to parquet |
 | `location_features.py`, `lagged_features.py`, `main-unpacked.py` | Exploration scripts and an older variant of `main.py` split into more DataOps nodes |
 | `plotting/` | Plots: users per month, monthly stats, polar plots of session start/end times |
-| `draft.qmd`, `pain_points.qmd`, `skrub-dataops.qmd` | Blog post draft and two slide decks; rendered output goes to `docs/` |
+| `index.qmd`, `draft.qmd`, `skrub-dataops.qmd` | Website landing page, blog post and slide deck; rendered output goes to `docs/` and is published to GitHub Pages |
 | `wowah_churn_study.db` | SQLite storage with the Optuna studies from `random_search()` |
 | `report.dot`, `report.mmd`, `report.svg`, `build_feature_table.*` | Diagrams of the DataOps plan |
 
@@ -104,6 +104,17 @@ the full heartbeat dataset (HTML report and plots in `reports/exploration/`),
 `pixi run plot-user-months`, `plot-stats-by-month` and `plot-session-times`
 redraw the plots, and `pixi run render` (or `render-draft` / `render-slides`)
 renders the documents into `docs/`.
+
+## Website
+
+The documents are published as a Quarto website at
+<https://www.riccardocappuzzo.com/wowah-sessionization/>: `index.qmd` is the
+landing page and links to the blog post (`draft.qmd`) and the slides
+(`skrub-dataops.qmd`). A push to `main` triggers
+`.github/workflows/publish.yml`, which renders the site and pushes `docs/` to
+the `gh-pages` branch. `_freeze/` is committed so the workflow can render the
+blog post without the raw dataset; refresh it locally after changing a code
+cell. To publish by hand, run `pixi run quarto publish gh-pages`.
 
 Iterating on the exploration figures does not need the full scan: the monthly
 table and the gap histogram are cached under `reports/exploration/cache/`, so

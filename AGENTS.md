@@ -61,6 +61,25 @@ treated as a project dependency.
   cell must actually re-execute.
 - `skrub-dataops.qmd` is a RevealJS slide deck;
   `draft.qmd` and `skrub-dataops.qmd` are the write-ups of record.
+- `index.qmd` is the landing page: it links to the blog post and the slides.
+  The navbar in `_quarto.yml` mirrors those links.
+- `sections/*.qmd` are draft fragments included into `draft.qmd`; they are
+  excluded from the site build (`!sections/**` in `_quarto.yml`).
+
+## Publishing
+
+The site is published to GitHub Pages at
+<https://www.riccardocappuzzo.com/wowah-sessionization/> (the custom domain of
+the `rcap107.github.io` user site; `rcap107.github.io/wowah-sessionization/`
+redirects there).
+
+- `.github/workflows/publish.yml` renders the site on every push to `main` and
+  force-pushes `docs/` to the `gh-pages` branch, which Pages serves.
+- `_freeze/` is committed on purpose. The blog post's code cells need the 4 GB
+  raw dataset in `data/` (git-ignored), so the frozen results are what lets CI
+  render without the data. Re-render locally with the data present and commit
+  the updated `_freeze/` whenever a code cell changes.
+- To publish by hand instead: `pixi run quarto publish gh-pages`.
 
 ## Python
 
