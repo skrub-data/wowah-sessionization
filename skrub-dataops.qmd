@@ -698,11 +698,6 @@ class Splitter:
 - These are **data pipeline decisions**, with big performance and runtime impact
 - Pipeline decisions **modify the pipeline itself**, and regular hyperparameter tuning does not work
 
-
-## Pain point 3 — Tuning the architecture of the pipeline, not just model knobs {.smaller auto-animate="true"}
-- **With DataOps** choices can be dropped inline, where the value is used — `choose_from`, `choose_bool`, `choose_float(log=True)`
-- One call to `skb.make_randomized_search(backend="optuna", ...)` turns the whole DAG into a search 
-
 ## Pain point 3 — Tuning the architecture of the pipeline, not just model knobs {.smaller auto-animate="true"}
 ```{=html}
 <ul style="font-size: 0.8em;">
@@ -722,39 +717,65 @@ class Splitter:
  pred = X_enc.skb.apply(HGBC(), y=y)</code></pre>
 ```
 
+
+## Pain point 3 — Tuning the architecture of the pipeline, not just model knobs {.smaller auto-animate="true"}
+- **With DataOps** choices can be dropped inline, where the value is used — `choose_from`, `choose_bool`, `choose_float(log=True)`
+- One call to `skb.make_randomized_search(backend="optuna", ...)` turns the whole DAG into a search 
+
 ## Pain point 4 - Debugging and inspecting a pipeline
 - Inspecting a regular pipeline is complex and requires programmatic access
+- The result of intermediate steps is hard to access without re-executing everything
 - Once deployed, it is hard to maintain a trained model ("why was this step needed?", 
 "where is the source code?")
-- The result of intermediate steps is hard to access without re-executing everything
+
+## Pain point 4 - Debugging and inspecting a pipeline
+
+<iframe src="reports/execution_report/index.html" width="100%" height="600px" style="border: 1px solid #ccc; border-radius: 4px;"> </iframe>
 
 ## Pain point 4 - Debugging and inspecting a pipeline
 - Data Ops reports provide rich information about each node
 - The source code used to generate a Data Op is bundled with it
 - When a preview or environment is provided, intermediate results can be shown
 
-## Pain point 4 - Debugging and inspecting a pipeline
-
-<iframe src="reports/execution_report/index.html" width="100%" height="480px" style="border: 1px solid #ccc; border-radius: 4px;"> </iframe>
 
 
-## Pain point 5 — The parse runs 63 times {.smaller}
+## Pain point 5 — The Need for Caching {.smaller}
 
-Parsing is a **node of the plan**, not a preprocessing step — that is what lets
-the same graph run on unseen files. But `cross_validate` evaluates the plan once
-per fit and once per score:
+- Parsing is a **node of the plan**, rather than a separate pre-processing step
+- Cross-validation re-evaluates the entire plan => parsing is repeated in each fold
+- We need to choose between **keeping parsing in the pipeline** and **quick iteration**
 
-$$31 \text{ folds} \times 2 + 1 = 63 \text{ evaluations}$$
 
-Each one parses all 132,042 heartbeat files: **68 s** per parse, **~71 minutes**
+::: {.callout-warning}
+
+Each CV fold parses all the heartbeats twice: **68 s** per parse, **~71 minutes**
 of parsing alone, before any feature engineering or model fitting.
+
+:::
+
+
+::: {.fragment}
+
+
+::: {.callout-important}
+
+This is exactly what we want caching for! 
+
+:::
+
+
+:::
+
+## Pain point 5 — The Need for Caching {.smaller}
+
+- Data Ops can be cached! 
+- Joblib caching is used to avoid repeating the same operations if no code changes
+have happened. 
 
 ```python
 CACHE_DIR = Path(__file__).parent / ".skrub_cache"
 skrub.set_config(cache=str(CACHE_DIR))
 ```
-
-## Pain point 5 — The parse runs 63 times {.smaller}
 
 | | wall time | `parse_files` calls |
 |---|---:|---:|
@@ -762,52 +783,10 @@ skrub.set_config(cache=str(CACHE_DIR))
 | cache cold | 289 s | 1 |
 | cache warm | 213 s | 0 |
 
-::: {.fragment}
-Two different savings, often confused:
-
-- **cache off → cache on**: 63 parses → 1. About **15× faster**.
-- **cache cold → cache warm**: 1 parse → 0. 289 s → 213 s, about **26%**.
-
-The 26% is what you get on the second run of the day. The 15× is the difference
-between a run you can iterate on and a run you leave overnight.
-:::
-
-## Pain point 5 — The cache does not know your code changed {.smaller}
-
-joblib keys a cached call on the **cached function's own source** plus its
-arguments — not on the functions that function calls. Editing
-`adding_features.py` would keep serving the old feature table, silently.
-
-```python
-def _source_fingerprint(*modules):
-    digest = hashlib.sha256()
-    for module in modules:
-        digest.update(Path(module.__file__).read_bytes())
-    return digest.hexdigest()[:16]
-
-FEATURES_FINGERPRINT = _source_fingerprint(
-    sys.modules[__name__],
-    sys.modules["add_churn"],
-    sys.modules["adding_features"],
-)
-```
-
-`build_feature_table(..., _fingerprint=None)` does `del _fingerprint`: the
-argument exists only to change the cache key.
-
-| Node | Fingerprinted? | Covers |
-|---|---|---|
-| `load` | no | parser is frozen |
-| `build_feature_table` | yes | `main.py`, `add_churn.py`, `adding_features.py` |
-
-**Add any new module `build_feature_table` calls to the fingerprint**, or edits
-to it will be ignored. The cache is 587 MB and git-ignored; deleting it is always
-safe, and costs a full recompute.
-
 
 # Conclusions
 
-## What have we seen so far? {.smaller}
+## 
 
 ::: {.columns}
 
@@ -815,8 +794,8 @@ safe, and costs a full recompute.
 
 
 - Data science is harder than what you learn in classes
-- A full ML pipeline involves preprocessing, feature engineering and model training
-- We want to learn a "state" (it's called machine **learning** after all), [**evaluate performance**]{.emph} and do so while avoiding [**data leakage**]{.emph}
+- A full ML pipeline involves [**preprocessing**]{.emph}, **feature engineering** and **model training**
+- We want to learn a "state" (it's called machine [**learning**]{.emph} after all), [**evaluate performance**]{.emph} and do so while avoiding [**data leakage**]{.emph}
 - [**Data Ops**]{.emph} are a framework that allows to build [**stateful pipelines**]{.emph} for
 [**arbitrary code and inputs**]{.emph}
 
