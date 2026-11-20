@@ -63,8 +63,16 @@ treated as a project dependency.
   `draft.qmd` and `skrub-dataops.qmd` are the write-ups of record.
 - `index.qmd` is the landing page: it links to the blog post and the slides.
   The navbar in `_quarto.yml` mirrors those links.
-- `sections/*.qmd` are draft fragments included into `draft.qmd`; they are
-  excluded from the site build (`!sections/**` in `_quarto.yml`).
+- The blog post is a series. `draft.qmd` is the index and each part is a
+  standalone document in `posts/` (`01-data` … `06-results-and-runtime`), with
+  a `Part N ·` title prefix. Parts are self-contained: each one includes the
+  shared `sections/_setup.qmd` and `sections/_load_data.qmd` cells and uses
+  `../` paths for images and includes.
+- `sections/*.qmd` are draft fragments; they are excluded from the site build
+  (`!sections/**` in `_quarto.yml`). Only the two `_`-prefixed files are still
+  included, by the parts in `posts/`.
+- `OUTLINE.md` is the internal backlog of material not yet written into a part.
+  It is not rendered.
 
 ## Publishing
 

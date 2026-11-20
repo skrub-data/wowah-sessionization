@@ -1,18 +1,56 @@
-### Generating session-based features
+---
+title: "Part 3 · Sessions, and the shape of the feature table"
+format: html
+---
 
-We first need to define what a "**session**" is in this context. 
+{{< include ../sections/_setup.qmd >}}
+{{< include ../sections/_load_data.qmd >}}
+
+## What the features describe
+
+The features of a row at month M are computed from the activity of month M-1 only.
+They fall in a few groups:
+
+- fixed attributes of the character: race and class;
+- **session features**: skrub's
+  [SessionEncoder](https://skrub-data.org/dev/reference/generated/skrub.SessionEncoder.html)
+  groups consecutive heartbeats of a
+  character into sessions, which gives the number of sessions in the month, and the
+  total, average and standard deviation of their duration, and the average start
+  and end time;
+- **player features**: highest level, number of distinct zones and guilds, most
+  frequent zone, first and last guild;
+- **playerbase features**: average level and number of active players of the
+  character's class;
+- optionally, **location features**: how rare the zones visited by the character
+  are, how much time is spent in "hub" zones that everyone visits, and how evenly
+  the time is spread across zones (Gini coefficient);
+- **lagged features**: the value of every feature one or more months earlier,
+  plus the month-to-month difference of numeric features, so that the model can
+  see trends.
+
+The functions that compute them live in
+[adding_features.py](https://github.com/skrub-data/wowah-sessionization/blob/main/adding_features.py).
+The function below loops over the months, and for each one filters the historical
+data down to the previous month before building the features. Because lagged features
+need each character's complete timeline, the feature table is built once for every
+(character, month) pair, independently of the cross-validation split, and each split
+only selects its rows from it.
+
+## Sessions
+
+We first need to define what a "**session**" is in this context.
 
 The reason we need sessions is because we have access to _heartbeats_, which only
 tell us that the avatar was online at the time of the poll. They do not give us
-unformation about when the player logged in, logged out, or how many sittings 
-a player had through a month. 
+unformation about when the player logged in, logged out, or how many sittings
+a player had through a month.
 
 We use the [SessionEncoder](https://skrub-data.org/dev/reference/generated/skrub.SessionEncoder.html)
-to add a "session ID" feature to the feature matrix, which is then used as the 
+to add a "session ID" feature to the feature matrix, which is then used as the
 base feature for all the other session features.
 
-#### The rule
-
+### The rule
 
 ::: {.callout-important}
 
@@ -33,11 +71,11 @@ beats = session_encoder.fit_transform(month_of_heartbeats)
 The `SessionEncoder` is stateless: its functionality is limited to *adding a column*
 (`timestamp_session_id`) to each row, while keeping the other values and the row
 order unchanged. This also means that the encoder needs to be refit for each month:
-sessions are a property of the data, rather than a fixed transformation. 
+sessions are a property of the data, rather than a fixed transformation.
 
-#### Choosing the session gap
+### Choosing the session gap
 
-Given that polls are executed with a ten-minutes cadence (with some variance), 
+Given that polls are executed with a ten-minutes cadence (with some variance),
 a gap of 10 minutes is expected of all players and thus does not mean anything;
 a gap of multiple hours instead means that the player took a break.
 
@@ -54,7 +92,7 @@ effect on the features is real but not dramatic: over March 2008 a character-mon
 has a median of 4 sessions at any of the three gaps, and the mean falls from 15.2
 at 15 minutes to 12.0 at 60.
 
-#### What one night looks like
+### What one night looks like
 
 Character 66560 on 2008-03-14, with `session_gap = 30` minutes. The 50m 14s gap
 crosses the threshold and opens a second session; the 20m 18s gap does not:
@@ -73,9 +111,9 @@ crosses the threshold and opens a second session; the 20m 18s gap does not:
 The same heartbeats at 15 and 60 minutes give three sessions and one session
 respectively:
 
-![](images/session_gap_example.png){fig-align="center"}
+![](../images/session_gap_example.png){fig-align="center"}
 
-#### From sessions to one row per month
+### From sessions to one row per month
 
 Sessions are only an intermediate: the model consumes one row per
 (character, month), so the sessions are collapsed by `add_session_features`.
@@ -104,12 +142,12 @@ which become the features attached to that character's **April** row:
 | `monthly_avg_session_start` | 02:20 |
 | `monthly_avg_session_end` | 03:27 |
 
-A detail to note is the fact that Session 1 has a duration of 1 minute: this is 
+A detail to note is the fact that Session 1 has a duration of 1 minute: this is
 because it is a single heartbeat, and `get_session_duration` would assign it a
 duration of zero and it would look as if the player did not log in. A duration of
 1 minute ensures this difference is noticeable.
 
-#### Sessionizing to generate complex features
+### Sessionizing to generate complex features
 
 A second sessionization is executed to add location features, by running a new
 `SessionEncoder` with  `split_by=["char", "zone"]`, producing
@@ -127,12 +165,25 @@ session_encoder_zone = SessionEncoder(
 )
 ```
 
-
 ::: {.callout-note collapse="true"}
-#### Diagram of the session-based features (click to expand)
+**Diagram of the session-based features (click to expand)**
 
-
-![](images/session_features.svg){fig-align="center"}
-
+![](../images/session_features.svg){fig-align="center"}
 
 :::
+
+## The loop that builds the table
+
+::: {.callout collapse="true" }
+**Full feature engineering function (click to expand)**
+
+```{python}
+#| echo: false
+from main import filter_df_by_month, build_feature_table, add_features
+show(filter_df_by_month, build_feature_table, add_features)
+```
+
+:::
+
+The next part takes the optional block on the list — location features — and asks
+whether it earns its place.

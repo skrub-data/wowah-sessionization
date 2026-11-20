@@ -1,4 +1,12 @@
-### Location features in depth
+---
+title: "Part 4 · Location features, and whether they earn their place"
+format: html
+---
+
+{{< include ../sections/_setup.qmd >}}
+{{< include ../sections/_load_data.qmd >}}
+
+## Where characters spend their time
 
 The previous section on sessionization modeled *when* a character is online, and 
 their general time-specific behavior. This section focuses on answering *where* 
@@ -8,11 +16,11 @@ to the game.
 
 While generating these features originally appeared to be a promising direction, 
 experimental results seem to show little to no impact on the actual prediction
-performance (see [Does the block earn its place?](does-the-block-earn-its-place)).
+performance (see [Does the block earn its place?](#does-the-block-earn-its-place)).
 We keep the investigation for historical reasons, and to showcase a different
 application of the `SessionEncoder`.
 
-#### Sessionizing over character and zone
+### Sessionizing over character and zone
 
 To generate the features, we use again the `SessionEncoder`, split on
 `(char, zone)` instead of `char`:
@@ -55,7 +63,7 @@ hearbeat in a given zone, the ten minutes between one zone and another belong
 to neither. Additionally, a player may move between multiple zones between two
 polls and that would not be detected by the dataset. 
 
-#### Rarity: how special is a zone
+### Rarity: how special is a zone
 
 The first thing worth knowing about a zone is how many people go there. Rarity
 is $r_v = \log(N / n_v)$, where $N$ is the number of characters in the month and
@@ -96,7 +104,7 @@ The list of "hubs" mixes two reasons why a zone is busy: either, hubs are where
 players trade, or it's where they spend time at level cap. For this reason, the 
 time spent in hubs is a weaker signal on its own than the time spent out of them.
 
-#### Per-character aggregates
+### Per-character aggregates
 
 `add_player_rarity` reduces a character's visits to six numbers:
 
@@ -143,7 +151,7 @@ resolution. `mean_rarity` moves with it, from 1.55 over heartbeats to 1.66 over
 minutes, because the long visit (Wailing Caverns, 1h 30m, rarity 3.19) gets more
 weight than its eleven heartbeats suggest.
 
-#### Gini: concentrated or spread out
+### Gini: concentrated or spread out
 
 The last block answers a different question: not *where*, but *how evenly*. The
 Gini coefficient over the time a character spent in each zone is 0 when the time
@@ -182,9 +190,9 @@ and it adds nothing to a model that already knows the zone count. It also cost
 `map_groups`, one Python call per character, which is where polars stops being
 able to vectorise.
 
-#### The whole picture
+### The whole picture
 
-![](images/zone_rarity.png){fig-align="center"}
+![](../images/zone_rarity.png){fig-align="center"}
 
 On the left, every zone in March 2008 by visitors (log scale) and rarity, with
 the hub threshold drawn in: the relationship is a clean straight line because
@@ -192,7 +200,7 @@ rarity *is* a function of the visitor count, and the hubs are simply the right
 end of it. On the right, the distribution of per-character Gini, with the spike
 at 0 standing for the characters who stayed in one non-hub zone all month.
 
-#### Does the block earn its place?
+### Does the block earn its place?
 
 Not measurably. Evaluated with the pipeline's own `Splitter` — an expanding
 window that trains on every month up to `split_point − 1` and tests at
@@ -234,6 +242,5 @@ difference.
 use_location = skrub.choose_bool(name="location_features")
 ```
 
-Code: `get_zone_rarity`, `add_player_rarity`, `gini`, `get_location_gini` and
-`add_location_features` in `adding_features.py`; the zone encoder and
-`use_location` in `make_data_op`.
+The next part assembles everything built so far into a single skrub Data Op and
+runs it.

@@ -2,9 +2,12 @@ project:
   type: website
   title: "WoWAH Player Churn Prediction"
   output-dir: docs
+  # Code cells run with the project root as cwd even when the document lives in
+  # a subfolder, so `data/...` paths stay identical across the whole series.
+  execute-dir: project
   render:
     - "*.qmd"
-    # Draft sections are included into draft.qmd; do not publish them standalone.
+    # Shared partials included by the parts in posts/; not published standalone.
     - "!sections/**"
   resources:
     - "reports/**"

@@ -1,23 +1,100 @@
-<!--
-Drop-in section for draft.qmd. Kept in its own file so it can be edited without
-touching the main draft.
+---
+title: "Part 6 · Unseen data, runtime, and what the numbers mean"
+format: html
+---
 
-Numbered 14 to avoid renumbering the existing outline (2-13); it reads naturally
-right after "12. Reproducing the post", since both are about runtime. Move it
-there and renumber 13 -> 14 if you prefer.
+{{< include ../sections/_setup.qmd >}}
+{{< include ../sections/_load_data.qmd >}}
 
-Numbers are measured on this machine (Apple M3, 8 cores) at load_fraction=0.1,
-over the 31 folds the Splitter yields. See AGENTS.md for the raw measurements.
--->
+## Results
 
-### 14. Caching the plan
+Evaluation on the raw files of January to October 2008 (`HISTORICAL_END`), 10%
+sample of the characters, default hyperparameters, ROC AUC per test month:
+
+| Definition | Mar | Apr | May | Jun | Jul | Aug | Sep |
+|---|---|---|---|---|---|---|---|
+| All rows (`only_prev_active=False`, old) | 0.50 | 0.55 | 0.75 | 0.79 | 0.79 | 0.83 | 0.79 |
+| Characters active in `M - 1` (current) | — | 0.82 | 0.82 | 0.82 | 0.83 | 0.87 | 0.88 |
+
+The two rows score different populations, so they are not directly comparable.
+The near-chance first folds of the old definition do not appear with the current
+one, and the rows with `prev_played` false are not "easy" — they have no
+features, so the model cannot rank them (AUC 0.43 to 0.80 within that group).
+Compared on the same test rows, training on all rows gave 0.64 to 0.82, against
+0.82 to 0.90 when training on active rows only.
+
+These numbers are a sanity check, not a tuned benchmark, and they change by a few
+hundredths between runs: `sample_by_user` is seeded, but the model itself is not.
+
+## Held-out evaluation on unseen files
+
+The most distinctive part of the design is that the plan is fitted once and then
+run on files it has never seen, parsing included. Two windows make that work:
+
+- `HISTORICAL_END = 2008-10-31` — everything up to and including October 2008 is
+  training material.
+- `UNSEEN_START = 2008-10-01` and `UNSEEN_END = 2009-01-10` — the unseen window.
+
+The two overlap by one month on purpose. November's features are built from
+October's activity, so if the unseen window started in November, the first month
+it could score would have no features at all. The overlap gives the unseen run
+one month of history to work from.
+
+`predict_unseen` fits the whole graph — parsing included — on the historical
+files, then calls `.predict()` with the unseen environment. The same code path
+parses files it has never seen, which is the point: there is no separate
+pre-processing script that could drift from the training one.
+
+January 2009 stops on the 10th because that is where the dataset ends, and that
+caps the last usable target at December 2008 — a January row's label would need
+February's data to be observed.
+
+## Reading the execution report
+
+Every `evaluate()` run writes a skrub report to `reports/execution_report/`. It
+is the easiest way to inspect the plan: the graph itself, per-node timing, and
+the fitted state of each transformer. Open
+`reports/execution_report/index.html` in a browser.
+
+The node that dominates the runtime is the location block, which is why it is a
+choice rather than a fixed part of the plan.
+
+## Data quality and quirks
+
+Several decisions in the code are responses to data problems that are easy to
+miss when reading the table:
+
+- `guild == -1` means "no guild" and is mapped to null in `make_data_op`.
+- Duplicate heartbeats at the same timestamp exist, and show up as the `0s
+  (duplicate)` bar in the gap histogram.
+- The level cap moves: 60 → 70 in April 2007, 70 → 80 in November 2008. Any
+  level-based feature is therefore not comparable across the whole window.
+- Expansion releases are a confounder: they cause both an influx of characters
+  and a change in behaviour.
+
+## Reproducing the post
+
+The `pixi` tasks and the `main.py` CLI are the entry points:
+
+```bash
+pixi run python main.py --env train --fraction 0.1
+pixi run python main.py --env unseen
+pixi run python main.py --env predict-unseen
+```
+
+`explore_data.py` regenerates the exploration figures. Determinism is partial:
+`sample_by_user` uses `seed=42`, but the model is not seeded, so AUC varies by a
+few hundredths between runs. At `--fraction 0.1` a cached run takes a few
+minutes; at `--fraction 1` expect the parse alone to take about an hour.
+
+## Caching the plan
 
 Parsing the raw logs is the most expensive thing in the project, and the way the
 pipeline is evaluated makes it worse than it looks. This section is about the one
 line of configuration that fixes it, and about the trap that makes the fix
 dangerous if you forget it.
 
-#### The parse is a node, and the node runs 63 times
+### The parse is a node, and the node runs 63 times
 
 `load` is not a preprocessing step that happens before the pipeline starts. It is
 a node of the plan, sitting at the top of the graph:
@@ -39,7 +116,7 @@ takes **68 s** and returns 34.9M rows, so an uncached cross-validation spends
 about **71 minutes parsing alone** — before any feature engineering or model
 fitting.
 
-#### One line turns it off
+### One line turns it off
 
 skrub's Data Ops cache is a single configuration call:
 
@@ -62,7 +139,7 @@ The cache-off figure is extrapolated rather than measured: an uncached
 count and the 68 s per-call cost were both measured directly, by memoizing the
 parse so the count could be taken without paying 63 × 68 s.
 
-#### Two different savings, often confused
+### Two different savings, often confused
 
 The table hides two separate effects, and they are not the same size:
 
@@ -75,7 +152,7 @@ So "the cache makes the run 26% faster" is true and misleading. The cache is the
 difference between a run you can iterate on and a run you leave overnight. The
 26% is what you get on the second run of the day.
 
-#### The trap: the cache does not know your code changed
+### The trap: the cache does not know your code changed
 
 joblib keys a cached call on the **cached function's own source** plus its
 arguments. It does not look at the functions that function calls. So editing
@@ -119,14 +196,14 @@ ever change the parser.
 **If you add a module that `build_feature_table` calls, add it to the
 `_source_fingerprint(...)` call.** Otherwise edits to it will be ignored.
 
-#### What the cache costs
+### What the cache costs
 
 The cache directory is **587 MB** and git-ignored. It is regenerated on demand,
 so deleting it is always safe — it just costs a full recompute, which is the ~75
 minutes above. That is the price of changing the parser, or of clearing the cache
 to be sure you are not looking at stale features.
 
-#### The unseen environment gets its own entry
+### The unseen environment gets its own entry
 
 The cache is keyed on the arguments of the cached call, and `raw_files` is one of
 them. The training and unseen environments pass different file lists, so they get
@@ -137,5 +214,15 @@ so caching matters far less there. `predict_unseen` fits on the historical files
 and then parses the unseen ones once; the cache saves that single parse on a
 repeat run and nothing more.
 
-Code: `CACHE_DIR`, `_source_fingerprint` and `FEATURES_FINGERPRINT` in `main.py`,
-and `load`, `make_data_op` and `predict_unseen`.
+## Limitations and what would come next
+
+- **Right-censoring.** Characters still active at the end of the window have no
+  observed churn, and the last months are dropped entirely. A survival-analysis
+  framing (time-to-churn) would use those rows instead of throwing them away.
+- **Avatars are treated as players.** A player with several avatars is counted
+  several times, and churn on one avatar is not churn on the player.
+- **No causal claim.** The model says who is at risk, not whether an incentive
+  would have worked.
+- **Monthly granularity is a choice.** Weekly would give more folds but a noisier
+  label.
+

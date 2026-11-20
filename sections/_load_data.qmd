@@ -1,0 +1,7 @@
+```{python}
+#| include: false
+import polars as pl
+
+# The heartbeat table, loaded once per document.
+df = pl.scan_parquet("data/wowah_data_2008.parquet")
+```

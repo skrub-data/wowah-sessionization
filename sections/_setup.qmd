@@ -1,0 +1,12 @@
+```{python}
+#| include: false
+import inspect
+
+from IPython.display import Markdown, display
+
+
+def show(*objs):
+    """Display the source code of the repository functions used in this post."""
+    src = "\n\n".join(inspect.getsource(o) for o in objs)
+    display(Markdown(f"```python\n{src}\n```"))
+```

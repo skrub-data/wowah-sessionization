@@ -1,0 +1,175 @@
+---
+title: "Part 1 · The dataset"
+format: html
+---
+
+{{< include ../sections/_setup.qmd >}}
+{{< include ../sections/_load_data.qmd >}}
+
+## The dataset
+We rely on the [World of Warcraft Avatar History](https://qualinet.github.io/databases/world_of_warcraft_avatar_history_dataset/)
+dataset.
+The dataset is built by scanning the game's Taiwanese server roughly every 10
+minutes, and logging information about each **user character** in the Horde faction
+that is found online at the timestamp's time. As we have a sequence of timestamps, this 
+lets us track the behavior of players over time. 
+
+The dataset spans roughly 3 years, with the first timestamps being recorded on 
+2005-12-31 and the final on 2009-01-10. This time frame includes the release of 
+two expansions, *The Burning Crusade*  and *Wrath of the Lich King*: expansions 
+are major events in the dataset, as they introduce new content and bring a major
+influx of new and old players.
+
+::: {.callout-note collapse="true"}
+**Expansion dates and Taiwanese release**
+
+WoWAH was collected on the Taiwanese server *Light's Hope*, so it follows the
+Taiwan/Hong Kong release schedule rather than the North American/European one: 
+importantly the first expansion (*The Burning Crusade*) launched in April 2007 rather than 
+in January; the second expansion (*Wrath of the Lich King*) released in November 
+2008 in both cases. 
+:::
+
+
+
+### Players, player characters and avatars
+
+Through this write-up, we will use the terms "character" and "avatar" **interchangeably**:
+both terms will be used to refer to any single player-controlled character that 
+is found online when the server snapshot is taken. 
+
+Avatar information includes:
+
+- The avatar's ID (a unique integer ID for anonymization)
+- The ID of the avatar's guild (possibly missing)
+- The avatar level at that moment in time
+- The avatar's class (Hunter, Mage, Warlock etc.)
+- The avatar's race (Blood Elf, Undead, Tauren etc.)
+- The avatar's location in the game's world
+
+
+### Parsing the data
+
+The dataset does not arrive as a table. It is 3.5 GB of text: 138,084 `.txt`
+files spread over 1,082 day folders, nested inside quarterly folders. Each file is 
+a dump of a **server snapshot**, stored as a txt file with a Lua-like syntax. 
+
+
+
+::: {.callout-note collapse="true"}
+**More detail on the dataset and parsing**
+
+**Folder structure**
+
+```
+WoWAH/2008_10_12/2008-10-01/08-27-57.txt
+     └── quarter ┘ └── day ──┘ └─ file ┘
+```
+
+**Example content of a single log file**
+
+```lua
+Persistent_Storage = {
+    "0, 06/12/07 03:17:48, 1,46340,53, 26, Orc, Hunter, Razorfen Kraul, , 0", -- [1]
+    "0, 06/12/07 03:17:48, 1,31887, , 10, Orc, Hunter, Durotar, , 0", -- [2]
+}
+```
+
+
+The quote–comma–quote structure is why this cannot be read with
+`pl.read_csv`: the field names are not in the file, the delimiters are inside a
+string, and the same file also contains a `RoundInfo` block that is not made of
+avatar records at all. Additionally, record layouts change across the years,
+so the format is not consistent. 
+The simplest approach is to use **regular expressions** to parse each line. 
+
+**Polling time**
+
+Each file represents a single **server snapshot**, rather than the trajectory of
+a single player. In fact, polling can require multiple minutes as the crawler 
+reads the list of avatars online and writes them in the log. 
+
+The content of each folder is not uniform: the number of files (i.e., snapshots)
+varies between 1 and 145 (with a median of 141), and the samples are a 10-minute
+grid, with some variability due to the time required by the crawler to poll all
+the users in the server. 
+The 10-minute gap is important: it means that this is the sampling period, rather
+than the player interrupting their session.
+
+Parsing therefore means exploring the directory tree, applying the regex to match
+only the heartbeat lines, keeping the expected seven fields, and then normalising
+them to a proper dataframe:
+
+| kept | type | note |
+|------|------|------|
+| `timestamp` | `Datetime` | `MM/DD/YY HH:MM:SS` → parsed, not string-sorted |
+| `char` | `Int32` | avatar id, cast with `strict=False` |
+| `guild` | `Int32` | anonymous guild id; an empty field becomes `null` |
+| `level` | `Int32` | cast with `strict=False` |
+| `race` | `String` | Orc, Tauren, Blood Elf… |
+| `charclass` | `String` | Warrior, Mage… |
+| `zone` | `String` | Durotar, The Barrens… |
+
+
+For convenience 
+and to prepare dataframes that can be used for exploration we publish a 
+[separate script](https://github.com/skrub-data/wowah-sessionization/blob/main/src/parse_to_single_table.py),
+to convert the text files in parquet, and we publish the resulting dataframe on
+[Kaggle: World of Warcraft Avatar History 2006-2009](https://www.kaggle.com/datasets/ryye107/world-of-warcraft-avatar-history).
+
+::: 
+
+
+
+Data Ops let us include parsing the files in the pipeline: this ensures that the 
+same pre-processing that is used to train the predictive model is replayed exactly
+on unseen data when it becomes available. 
+
+Since a heartbeat table has to be rebuilt for every new set of files, the
+parser is not a one-off script but a function of the file list:
+`parse_files(file_paths)` returns a typed `DataFrame`. That is what lets
+`load` in `main.py` be a node of the plan, so refitting on the historical files
+and predicting on held-out files run the *same* parsing code on different
+inputs, instead of depending on a parquet someone generated earlier.
+
+Two details make that practical:
+
+- `process_single_file` parses one file; `parse_files` fans the work out over
+  `ProcessPoolExecutor`. On the machine used for this post, a full run of the
+  138k files takes about a minute.
+- `list_raw_files(root_dir, start_date, end_date)` selects files by the **day**
+  folder, not the quarterly one. That precision is required because the split
+  between historical and held-out data is a monthly boundary, and a quarter
+  folder such as `2008_10_12` spans October, November and December: filtering
+  on the folder name would either leak December into training or drop October
+  from it. The two selections overlap on purpose — October 2008 is in both — so
+  the last training month can seed the features for the first scored month.
+
+### A quick exploration of the dataset
+We begin by loading the historical dataset with all the timestamps. To keep the
+examples fast, this post uses the year 2008 (about 10.8M rows, 37k characters); the
+repository can also run everything on the full 2006-2009 dataset (35.6M rows, 90k
+characters). We use `.scan_parquet()` because it returns a `LazyFrame`, which
+we want to use as much as possible through the code for query optimization. 
+
+```{python}
+from skrub import TableReport
+
+# we collect the dataframe because the TableReport does not accept LazyFrames
+TableReport(df.collect())
+```
+
+Skrub's `TableReport` gives a quick view of many statistics we may be interested
+in when we explore a dataset. 
+We can get information on the shape of the dataframe (almost 11M rows), the 
+data types we are working with as well as the distribution of categorical and 
+numerical values. The level cap of 70 is immediately evident as the median of the 
+"level" column.
+
+By itself, this dataset includes a wealth of information about player habits and 
+behaviors, but exploring such information goes beyond the scope of this post. As
+such, we will only focus on what is most relevant to the task of predicting player
+churn.
+
+The next part turns this table into a supervised problem: what exactly counts as
+churn, and how to split months so that the model is never trained on the future.

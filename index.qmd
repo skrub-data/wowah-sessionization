@@ -15,9 +15,11 @@ dataset with [skrub](https://skrub-data.org/) Data Ops.
 
 A step-by-step walk-through of the pipeline: from the raw heartbeat logs to a
 monthly churn model, covering the data preparation, the custom time-aware
-splitter and the skrub Data Op that ties everything together.
+splitter and the skrub Data Op that ties everything together. It is published as
+a series of short parts, starting with [The dataset](posts/01-data.html).
 
 [Read the post](draft.html){.btn .btn-primary}
+[Start with Part 1](posts/01-data.html){.btn .btn-outline-primary}
 :::
 
 ::: {.g-col-12 .g-col-md-6 .card .p-3 .mb-3}

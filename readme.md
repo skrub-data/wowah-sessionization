@@ -41,7 +41,10 @@ Let `M` be the month in which we score a character (and could act on it).
 | `src/parse_to_single_table.py`, `src/convert_to_parquet.py` | Parse the raw WoWAH `.txt` logs to CSV, then to parquet |
 | `location_features.py`, `lagged_features.py`, `main-unpacked.py` | Exploration scripts and an older variant of `main.py` split into more DataOps nodes |
 | `plotting/` | Plots: users per month, monthly stats, polar plots of session start/end times |
-| `index.qmd`, `draft.qmd`, `skrub-dataops.qmd` | Website landing page, blog post and slide deck; rendered output goes to `docs/` and is published to GitHub Pages |
+| `index.qmd`, `draft.qmd`, `skrub-dataops.qmd` | Website landing page, blog post index and slide deck; rendered output goes to `docs/` and is published to GitHub Pages |
+| `posts/*.qmd` | The blog post, split into six standalone parts (`01-data` … `06-results-and-runtime`); `draft.qmd` is the index that links to them |
+| `sections/_setup.qmd`, `sections/_load_data.qmd` | Shared `#\| include: false` cells (the `show()` helper and the parquet load) included by every part |
+| `OUTLINE.md` | Internal backlog of material that exists in the code but is not yet in any part; not published |
 | `wowah_churn_study.db` | SQLite storage with the Optuna studies from `random_search()` |
 | `report.dot`, `report.mmd`, `report.svg`, `build_feature_table.*` | Diagrams of the DataOps plan |
 
@@ -103,14 +106,17 @@ Other tasks: `pixi run churn` prints the churn table, `pixi run explore` profile
 the full heartbeat dataset (HTML report and plots in `reports/exploration/`),
 `pixi run plot-user-months`, `plot-stats-by-month` and `plot-session-times`
 redraw the plots, and `pixi run render` (or `render-draft` / `render-slides`)
-renders the documents into `docs/`.
+renders the documents into `docs/`. `render-draft` renders only the series index
+(`draft.qmd`); to render one part, pass its path:
+`pixi run quarto render posts/03-sessions.qmd`.
 
 ## Website
 
 The documents are published as a Quarto website at
 <https://skrub-data.org/wowah-sessionization/>: `index.qmd` is the
-landing page and links to the blog post (`draft.qmd`) and the slides
-(`skrub-dataops.qmd`). A push to `main` triggers
+landing page and links to the blog post and the slides
+(`skrub-dataops.qmd`). The blog post itself is a series: `draft.qmd` is the
+index and each part lives in `posts/`. A push to `main` triggers
 `.github/workflows/publish.yml`, which renders the site and pushes `docs/` to
 the `gh-pages` branch. `_freeze/` is committed so the workflow can render the
 blog post without the raw dataset; refresh it locally after changing a code

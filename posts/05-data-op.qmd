@@ -1,0 +1,134 @@
+---
+title: "Part 5 · Assembling the plan, and running it"
+format: html
+---
+
+{{< include ../sections/_setup.qmd >}}
+{{< include ../sections/_load_data.qmd >}}
+
+## From functions to a plan
+
+Everything so far has been a function that takes a table and returns a table. A
+skrub [Data Op](https://skrub-data.org/stable/data_ops.html) is what turns those
+functions into a plan: a graph of nodes, each one either a step of the
+pre-processing or the estimator at the end, with the hyperparameters declared
+alongside so that they can be tuned together.
+
+### Loading and downsampling the file
+
+::: {.callout-tip collapse="true"}
+**Loading and downsampling the file (click to expand)**
+
+`load` parses the raw `.txt` heartbeat logs itself — parsing is a node of the
+plan, not a separate pre-processing script — then downsamples the result to
+reduce execution time. We need to be deliberate with how we sample the data:
+rather than choosing a random subset of the values in the dataset, we need to
+be careful to select a subset of characters and keep all the rows for those
+characters. This ensures that we have reliable information about all the
+characters.
+
+```{python}
+#| echo: false
+from main import load
+show(load)
+```
+
+:::
+
+Sampling by character rather than by row is not a detail. A row-level sample
+would punch holes in each character's monthly timeline, and a character with a
+missing month looks exactly like a character who churned — the label would be
+corrupted by the sampling. Keeping every row of a smaller set of characters
+costs the same in compute and leaves the timelines intact.
+
+### The hyperparameters
+
+The hyperparameters of the pipeline are declared with skrub's `choose_*` functions:
+the session gap, whether to use location features, how many lags to add, and the
+learning rate of the model. They can then be tuned together with the rest of the plan.
+
+::: {.callout-tip}
+**Full Data Op construction script**
+
+```{python}
+#| echo: false
+from main import make_data_op
+show(make_data_op)
+```
+
+:::
+
+### The model and the encoder
+
+The plan ends in a `TableVectorizer` followed by a
+`HistGradientBoostingClassifier`. The vectorizer is what makes the mixed table
+usable: it one-hot encodes the low-cardinality categorical columns (race, class,
+most frequent zone, guilds) and leaves the numeric and duration columns alone.
+The gradient-boosted tree model is a good fit for the rest — it handles nulls
+natively, needs no scaling, and picks up the non-linearities in features like
+level and session count without any manual binning.
+
+Only one model hyperparameter is tuned, `learning_rate`, drawn log-uniformly
+between 0.1 and 0.5. Everything else is left at the defaults, which is a
+deliberate choice: the point of the exercise is the plan, not squeezing the last
+hundredth of AUC out of the estimator.
+
+The scoring function is `roc_auc`. Accuracy would be misleading here, because
+`churn_next` is true for only about 36.5% of the rows in the 2008 churn dataset
+(81,199 rows over 10 months), so a model that always predicts "not churned"
+already scores 0.64 accuracy while ranking nothing. AUC 0.5 is genuine chance,
+and that is the number to compare against.
+
+### Why only characters active in the previous month
+
+The plan scores only characters that played in the previous month
+(`only_prev_active=True`). The alternative — keeping every row, including
+characters who were already absent — gives 221,237 rows in the 2008 data with
+54.5% positives, against 81,199 rows and 36.5% positives for the restricted
+version.
+
+The restricted version is not just smaller, it is easier to score well on. 75% of
+the old positive rows were already absent in the previous month, so the trivial
+rule "absent last month" gets ROC AUC 0.63 without any model at all. On the same
+test rows, a model trained on all rows scores 0.64 to 0.82 depending on the
+month, against 0.82 to 0.90 when trained on active rows only. The rows with no
+features do not make the problem easier — they pollute training. The cause is not
+tested here, but the direction is consistent across every month.
+
+There is also an operational argument: you can only retain characters who are
+still around. Scoring characters who have already left produces a number that
+looks like a churn rate but cannot be acted on.
+
+## Running it
+
+The data op is evaluated by passing a list of raw log file paths as input —
+parsing them is itself one of the plan's nodes (see "Loading and downsampling the
+file" above). Here we cross-validate it on 10% of the characters of the
+historical (through October 2008) files:
+
+```{python}
+#| eval: false
+data_op = make_data_op(load_fraction=0.1)
+results = data_op.skb.cross_validate(environment=main.get_env("train"))
+```
+
+::: {.callout-note}
+Only characters that played in the previous month are scored (see
+`only_prev_active=True` above): the characters that were already absent have no
+features and are not the ones that could be retained, and keeping them in the
+training set lowers the scores on the characters that are still active.
+:::
+
+## Tuning
+
+`random_search` wraps the same plan in an Optuna study: 16 iterations, all cores,
+results persisted to `wowah_churn_study.db` so that a run can be resumed. The
+search space is exactly the four choices declared in `make_data_op` —
+`session_gap`, `location_features`, `lags` and `learning_rate`.
+
+One caveat is worth stating plainly: the search runs on the same folds that are
+then reported, so the tuned score is optimistic. A clean comparison would need a
+third window that neither the search nor the final evaluation touches.
+
+The next part looks at what the plan scores on data it has never seen, and at
+what it costs to run.
