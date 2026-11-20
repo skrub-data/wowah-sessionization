@@ -41,6 +41,60 @@ missing month looks exactly like a character who churned — the label would be
 corrupted by the sampling. Keeping every row of a smaller set of characters
 costs the same in compute and leaves the timelines intact.
 
+### Why the sample is drawn by character
+
+`load` parses first and samples second, and the sampling is one line of polars:
+take the distinct `char` values, draw a fraction of them, keep every row whose
+`char` is in that set. The default fraction is 0.1, and `--fraction 1` skips the
+sampling entirely. The draw is seeded (`seed=42`), so the same characters come
+back on every run — the model is not seeded, but the sample is.
+
+The obvious alternative is to sample rows, and it is wrong here in a way that is
+easy to miss, because the table it produces looks perfectly reasonable. It has
+the same number of rows, the same columns, and no nulls. What it does not have is
+intact timelines.
+
+![](../images/sampling.png){fig-align="center"}
+
+::: {.figure-caption}
+A 10% sample of the rows, for 40 characters drawn at random from the 20,472 the
+sample kept. Blue: the sample kept the month. Orange: the character played that
+month, but the sample dropped it. Grey: the character did not play.
+:::
+
+The orange blocks are the problem. Each one is a month the character
+demonstrably played, which the row sample threw away. Nothing about the
+character changed — only how the sample was drawn.
+
+The damage is not marginal. On the 2008 table — 10.8M heartbeats, 37,354
+characters, 98,972 character-months — a 10% row sample keeps 20,472 characters
+but loses **24% of the character-months those characters actually played**. Of
+those characters, 13.9% end up with a hole in the middle of their timeline, 1.85
+months wide on average. A character-level sample of the same size keeps 3,735
+characters and loses nothing.
+
+The holes matter because of how the label is built. `has_played` is derived from
+presence in the table, so a dropped month is indistinguishable from a month the
+character did not play. `churn` is "absent this month *and* the previous one", so
+a dropped month can flip a row from negative to positive. Measured on the same
+2008 data, **33% of the positives in the row-level sample are spurious** — 5,519
+of 16,701 — while no true positive is lost. The corruption is one-directional: it
+only invents churners, never hides them. Precision against the true labels is
+0.67 and recall is 1.0.
+
+That asymmetry is the reason the choice is not a matter of taste. A model trained
+on the row sample would be learning to predict the sampling pattern as much as
+the behaviour, and the pattern is not random with respect to the target: it fires
+exactly on the rows where a character played a little. The character-level sample
+costs the same to parse (the parse happens before the sample) and about the same
+to fit (1.08M rows against 1.12M), and it buys complete timelines for fewer
+characters instead of broken timelines for more.
+
+The same `load` node runs on the held-out files, so the unseen evaluation samples
+10% of the characters *of the unseen window*, not the characters chosen for
+training. That is deliberate: the held-out run should not be able to recognise
+which characters the model was fitted on.
+
 ### The hyperparameters
 
 The hyperparameters of the pipeline are declared with skrub's `choose_*` functions:

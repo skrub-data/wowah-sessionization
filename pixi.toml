@@ -68,6 +68,8 @@ predict-unseen = "python main.py --env predict-unseen"
 plot-session-times = "python plotting/plot_session_start_end.py"
 plot-stats-by-month = "python plotting/plot_stats_by_month.py"
 plot-user-months = { cmd = "python plot_user_months.py", cwd = "plotting" }
+plot-sampling = "python plotting/plot_sampling.py"
+plot-zone-rarity = "python plotting/plot_zone_rarity.py"
 # Render the whole site (all *.qmd in _quarto.yml) into docs/
 render = { cmd = "quarto render", env = { "SKB_TABLE_REPORT_VERBOSITY" = "0" } }
 render-draft = "quarto render draft.qmd"

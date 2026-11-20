@@ -40,7 +40,7 @@ Let `M` be the month in which we score a character (and could act on it).
 | `src/utils.py` | `sample_by_user` (sample whole character histories) and `get_session_duration` |
 | `src/parse_to_single_table.py`, `src/convert_to_parquet.py` | Parse the raw WoWAH `.txt` logs to CSV, then to parquet |
 | `location_features.py`, `lagged_features.py`, `main-unpacked.py` | Exploration scripts and an older variant of `main.py` split into more DataOps nodes |
-| `plotting/` | Plots: users per month, monthly stats, polar plots of session start/end times |
+| `plotting/` | Plots: users per month, monthly stats, polar plots of session start/end times, the session-gap example, zone rarity and the row-vs-character sampling comparison |
 | `index.qmd`, `draft.qmd`, `skrub-dataops.qmd` | Website landing page, blog post index and slide deck; rendered output goes to `docs/` and is published to GitHub Pages |
 | `posts/*.qmd` | The blog post, split into six standalone parts (`01-data` … `06-results-and-runtime`); `draft.qmd` is the index that links to them |
 | `sections/_setup.qmd`, `sections/_load_data.qmd` | Shared `#\| include: false` cells (the `show()` helper and the parquet load) included by every part |
@@ -104,11 +104,11 @@ rate of the gradient boosting model.
 
 Other tasks: `pixi run churn` prints the churn table, `pixi run explore` profiles
 the full heartbeat dataset (HTML report and plots in `reports/exploration/`),
-`pixi run plot-user-months`, `plot-stats-by-month` and `plot-session-times`
-redraw the plots, and `pixi run render` (or `render-draft` / `render-slides`)
-renders the documents into `docs/`. `render-draft` renders only the series index
-(`draft.qmd`); to render one part, pass its path:
-`pixi run quarto render posts/03-sessions.qmd`.
+`pixi run plot-user-months`, `plot-stats-by-month`, `plot-session-times`,
+`plot-sampling` and `plot-zone-rarity` redraw the plots, and `pixi run render`
+(or `render-draft` / `render-slides`) renders the documents into `docs/`.
+`render-draft` renders only the series index (`draft.qmd`); to render one part,
+pass its path: `pixi run quarto render posts/03-sessions.qmd`.
 
 ## Website
 

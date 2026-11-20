@@ -9,8 +9,8 @@ exists in the code but is not yet in any part.
 ### 2. Downsampling by character  — *covered in Part 5*
 
 `load` samples a fraction of characters and keeps **all** their rows. The post
-mentions this in one sentence inside a collapsible block but never says why
-row-level sampling would be wrong.
+now has a subsection ("Why the sample is drawn by character") with the figure
+`images/sampling.png`; what follows is the material behind it.
 
 - Why sampling rows breaks the monthly timeline (a character would appear to have
   gaps that are sampling artefacts, not churn).
@@ -18,15 +18,30 @@ row-level sampling would be wrong.
 - The cost/accuracy trade-off: 10% of characters by default, `--fraction 1` for
   everything.
 
+Measured on `data/wowah_data_2008.parquet` (10.8M heartbeats, 37,354 characters,
+98,972 character-months), 10% sample, `seed=42`:
+
+| | rows | characters | character-months | lost |
+|---|---:|---:|---:|---:|
+| full | 10,826,734 | 37,354 | 98,972 | — |
+| by character | 1,115,791 | 3,735 | 9,959 | 0 |
+| by row | 1,082,673 | 20,472 | 59,690 | 24% of the played cells |
+
+- 13.9% of the row-sampled characters get an interior hole, 1.85 months wide on
+  average.
+- Label corruption: 5,519 of 16,701 positives in the row sample are spurious
+  (33%), 0 true positives lost — precision 0.67, recall 1.0 against the true
+  labels. The corruption only invents churners.
+- The parse happens before the sample, so both schemes cost the same to parse and
+  about the same to fit.
+
 Code: `sample_by_user` and `load`, in `src/utils.py` and `main.py`.
 
-::: {.callout-note}
-**Figure placeholder** — `images/TODO-sampling.png`
-
-Two side-by-side panels over the same month: (a) row-level sample, showing
-characters with spurious missing months; (b) character-level sample, showing
-complete timelines for fewer characters. Same number of rows in both.
-:::
+Figure: `images/sampling.png`, drawn by `plotting/plot_sampling.py`
+(`pixi run plot-sampling`). One panel: a 10% row sample over 2008 for 40
+characters drawn at random from the 20,472 the sample kept (a snippet — the
+sample kept far more than can be drawn). Blue = kept, orange = played but
+dropped, grey = did not play.
 
 ### 3. What a "session" is  — *covered in Part 3*
 

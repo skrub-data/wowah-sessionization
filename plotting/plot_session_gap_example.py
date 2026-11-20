@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 import polars as pl
 from skrub import SessionEncoder
 
+plt.style.use("seaborn-v0_8-talk")
+
 DATA_PATH = "data/wowah_data_2008.parquet"
 OUTPUT_PATH = Path("images/session_gap_example.png")
 
@@ -41,7 +43,7 @@ def plot(night, output_path=OUTPUT_PATH, gaps=GAPS):
     hours = (night["timestamp"].dt.hour() + night["timestamp"].dt.minute() / 60).to_list()
 
     fig, axes = plt.subplots(
-        len(gaps), 1, figsize=(10, 1.35 * len(gaps) + 0.9), sharex=True
+        len(gaps), 1, figsize=(11, 1.5 * len(gaps) + 1.3), sharex=True
     )
     for ax, gap, color in zip(axes, gaps, COLORS):
         ids = session_ids(night, gap)
@@ -63,7 +65,6 @@ def plot(night, output_path=OUTPUT_PATH, gaps=GAPS):
         ax.set_title(
             f"{ids.n_unique()} session{'s' if ids.n_unique() > 1 else ''}",
             loc="right",
-            fontsize=9,
         )
         for side in ("top", "right", "left"):
             ax.spines[side].set_visible(False)
