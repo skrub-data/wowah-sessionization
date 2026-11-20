@@ -967,3 +967,29 @@ A per-character timeline diagram: a few characters as horizontal bars, with the
 observation window shaded, showing (a) a character who churns inside the window,
 (b) one who is still active at the end (censored), and (c) one who starts late.
 :::
+
+### 14. Caching the plan
+
+Drafted in full in `sections/caching.qmd`; this entry is the pointer. It is
+runtime material rather than modelling material, so it reads naturally next to
+"12. Reproducing the post" — move it there and renumber 13 → 14 if you prefer.
+
+- The parse is a **node of the plan**, so `cross_validate` re-parses on every
+  evaluation: 31 folds × 2 + 1 = **63 parses** of 132,042 files, ~71 minutes.
+- `skrub.set_config(cache=...)` takes that to one parse. Cache off → on is about
+  **15× faster**; cold → warm is only about **26%**, because the rest is fitting.
+- The cache does **not** invalidate when the code changes: joblib keys on the
+  cached function's own source. `_source_fingerprint` puts the dependencies back
+  into the key; `load` is deliberately left out because the parser is frozen.
+- The cache is 587 MB and git-ignored. Deleting it is always safe and costs a full
+  recompute.
+
+Code: `main.py:61` (`CACHE_DIR`), `main.py:65` (`_source_fingerprint`),
+`main.py:90` (`FEATURES_FINGERPRINT`), `main.py:302` (`load`),
+`main.py:313` (`make_data_op`).
+
+::: {.callout-note}
+**Figure placeholder** — none. A table of the three cache states (off / cold /
+warm) with wall time and parse count is enough; it is already in the section
+file.
+:::

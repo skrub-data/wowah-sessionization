@@ -1,0 +1,149 @@
+---
+title: "Section draft: caching the plan"
+format: html
+execute:
+  enabled: false
+---
+
+<!--
+Drop-in section for draft.qmd. Kept in its own file so it can be edited without
+touching the main draft.
+
+Numbered 14 to avoid renumbering the existing outline (2-13); it reads naturally
+right after "12. Reproducing the post", since both are about runtime. Move it
+there and renumber 13 -> 14 if you prefer.
+
+Numbers are measured on this machine (Apple M3, 8 cores) at load_fraction=0.1,
+over the 31 folds the Splitter yields. See AGENTS.md for the raw measurements.
+-->
+
+### 14. Caching the plan
+
+Parsing the raw logs is the most expensive thing in the project, and the way the
+pipeline is evaluated makes it worse than it looks. This section is about the one
+line of configuration that fixes it, and about the trap that makes the fix
+dangerous if you forget it.
+
+#### The parse is a node, and the node runs 63 times
+
+`load` is not a preprocessing step that happens before the pipeline starts. It is
+a node of the plan, sitting at the top of the graph:
+
+```python
+raw_files = skrub.var("raw_files")
+historical_data = raw_files.skb.apply_func(load, fraction=load_fraction)
+```
+
+That is deliberate — it is what lets the same graph be fitted on the historical
+files and later run on files it has never seen. But it also means the parse is
+re-executed every time the plan is evaluated, and `cross_validate` evaluates the
+plan **once per fit and once per score**:
+
+$$31 \text{ folds} \times 2 + 1 = 63 \text{ evaluations}$$
+
+Each evaluation parses all 132,042 historical heartbeat files. A single parse
+takes **68 s** and returns 34.9M rows, so an uncached cross-validation spends
+about **71 minutes parsing alone** — before any feature engineering or model
+fitting.
+
+#### One line turns it off
+
+skrub's Data Ops cache is a single configuration call:
+
+```python
+CACHE_DIR = Path(__file__).parent / ".skrub_cache"
+skrub.set_config(cache=str(CACHE_DIR))
+```
+
+With it on, the first evaluation parses and every later one reuses the result.
+Measured end to end at `load_fraction=0.1`:
+
+| | wall time | `parse_files` calls |
+|---|---:|---:|
+| cache off | ~75 min (extrapolated) | 63 |
+| cache cold | 289 s | 1 |
+| cache warm | 213 s | 0 |
+
+The cache-off figure is extrapolated rather than measured: an uncached
+`cross_validate` was still running after 30 minutes and was stopped. The 63-call
+count and the 68 s per-call cost were both measured directly, by memoizing the
+parse so the count could be taken without paying 63 × 68 s.
+
+#### Two different savings, often confused
+
+The table hides two separate effects, and they are not the same size:
+
+- **cache off → cache on**: 63 parses become 1. About **15× faster**. This is
+  the one that matters.
+- **cache cold → cache warm**: 1 parse becomes 0. 289 s → 213 s, about **26%**.
+  Modest, because the remaining time is model fitting and encoding, not parsing.
+
+So "the cache makes the run 26% faster" is true and misleading. The cache is the
+difference between a run you can iterate on and a run you leave overnight. The
+26% is what you get on the second run of the day.
+
+#### The trap: the cache does not know your code changed
+
+joblib keys a cached call on the **cached function's own source** plus its
+arguments. It does not look at the functions that function calls. So editing
+`adding_features.py` would leave `build_feature_table`'s cache key unchanged, and
+the cache would keep serving the old feature table — silently, with no warning,
+and with results that look plausible.
+
+The workaround is to put the dependency back into the key by passing a source
+fingerprint as an extra argument:
+
+```python
+def _source_fingerprint(*modules):
+    digest = hashlib.sha256()
+    for module in modules:
+        digest.update(Path(module.__file__).read_bytes())
+    return digest.hexdigest()[:16]
+
+
+FEATURES_FINGERPRINT = _source_fingerprint(
+    sys.modules[__name__],
+    sys.modules["add_churn"],
+    sys.modules["adding_features"],
+)
+```
+
+`build_feature_table` accepts `_fingerprint=None` and immediately does
+`del _fingerprint`: the argument exists only to change the cache key, and never
+reaches the computation.
+
+| Node | Fingerprinted? | Covers |
+|---|---|---|
+| `load` | no | parser is frozen |
+| `build_feature_table` | yes | `main.py`, `add_churn.py`, `adding_features.py` |
+
+The parse node is deliberately left out. The parser is frozen, so the guard would
+only ever fire on a change that is not going to happen — and the cost of leaving
+it out is that editing `src/parse_to_single_table.py` is not detected. That is a
+tidiness trade-off, not a correctness one: delete `.skrub_cache/` by hand if you
+ever change the parser.
+
+**If you add a module that `build_feature_table` calls, add it to the
+`_source_fingerprint(...)` call.** Otherwise edits to it will be ignored.
+
+#### What the cache costs
+
+The cache directory is **587 MB** and git-ignored. It is regenerated on demand,
+so deleting it is always safe — it just costs a full recompute, which is the ~75
+minutes above. That is the price of changing the parser, or of clearing the cache
+to be sure you are not looking at stale features.
+
+#### The unseen environment gets its own entry
+
+The cache is keyed on the arguments of the cached call, and `raw_files` is one of
+them. The training and unseen environments pass different file lists, so they get
+separate cache entries and neither invalidates the other.
+
+The unseen set is much smaller — 10,058 files, 2.31M rows, **7.3 s** to parse —
+so caching matters far less there. `predict_unseen` fits on the historical files
+and then parses the unseen ones once; the cache saves that single parse on a
+repeat run and nothing more.
+
+Code: `main.py:61` (`CACHE_DIR`), `main.py:65` (`_source_fingerprint`),
+`main.py:90` (`FEATURES_FINGERPRINT`), `main.py:302` (`load`),
+`main.py:313` (`make_data_op`), `main.py:419` (`predict_unseen`).
