@@ -46,12 +46,12 @@ heartbeat. Character 66560's 10h 01m of play shows up as 30 visits over 6 zones:
 
 | zone | visits | time in zone | rarity | hub? |
 |-------------------------|:------:|--------------|-------:|:----:|
-| Orgrimmar | 12 | 2h 05m 59s | 0.66 | yes |
-| The Barrens | 9 | 2h 03m 11s | 1.43 | yes |
-| Wailing Caverns | 2 | 1h 30m 11s | 3.19 | no |
-| Warsong Gulch | 5 | 42m 44s | 1.87 | no |
+| Wailing Caverns | 2 | 1h 09m 59s | 3.19 | no |
+| Warsong Gulch | 5 | 30m 00s | 1.87 | no |
 | Stranglethorn Vale | 1 | 20m 10s | 1.91 | no |
+| The Barrens | 9 | 10m 05s | 1.43 | yes |
 | Thunder Bluff | 1 | 10m 01s | 1.71 | no |
+| Orgrimmar | 12 | 1m 00s | 0.66 | yes |
 
 The `time in zone` column sums to less than the month's play time — 6h 52m
 against 10h 01m. That is not a bug: a visit is measured from the first to the
@@ -192,9 +192,9 @@ coefficient, so the left join leaves `gini` null for them. Between the two, only
 mostly a proxy for how many zones a character visited: it is bounded above by
 $(n-1)/n$, so it rises mechanically with $n$, and the correlation between the two
 is 0.73. Within zone-count strata it is at chance — for characters who visited
-exactly two non-hub zones the AUC against churn is 0.510, for three it is 0.506 —
+exactly two non-hub zones the AUC against churn is 0.487, for three it is 0.494 —
 and it adds nothing to a model that already knows the zone count. It also cost
-1.4 s of the 1.6 s location block, because the coefficient has to run through
+1.50 s of the 1.65 s location block, because the coefficient has to run through
 `map_groups`, one Python call per character, which is where polars stops being
 able to vectorise.
 
@@ -210,41 +210,41 @@ at 0 standing for the characters who stayed in one non-hub zone all month.
 
 #### Does the block earn its place?
 
-Yes, but only after the change above. Evaluated with the pipeline's own
-`Splitter` — an expanding window that trains on every month up to `split_point −
-1` and tests on `split_point + 1`, with the gap month dropped because its target
-needs the test month's data — over the eight splits available in 2008:
+Not measurably. Evaluated with the pipeline's own `Splitter` — an expanding
+window that trains on every month up to `split_point − 1` and tests at
+`split_point + 1`, with the gap month dropped because its target needs the test
+month's data — the block is indistinguishable from noise. Over the eleven 2008
+splits, averaged across three 10% character samples:
 
 | location features | mean ΔAUC | wins |
 |---|---:|---:|
-| `gini` alone | −0.0002 | 3/8 |
-| the three rarity columns alone (as shipped before) | −0.0089 | 3/8 |
-| rarity + `gini` | −0.0093 | 4/8 |
-| rarity + zone level (six columns, as shipped now) | **+0.0085** | **8/8** |
-| rarity + zone level + `gini` | +0.0071 | 8/8 |
+| `gini` alone | −0.0003 | 17/33 |
+| the three rarity columns alone | +0.0006 | 17/33 |
+| rarity + `gini` | −0.0004 | 16/33 |
+| rarity + zone level (six columns, as shipped now) | −0.0001 | 19/33 |
+| rarity + zone level + `gini` | +0.0004 | 18/33 |
 
-The old three-column block was actively harmful on average: `in_hub` and the
-rarity pair are largely re-expressions of how much a character played, which the
-general features already carry. Adding the zone-level columns is what turns the
-block from a liability into a consistent gain. The worst split for the old block
-is the last one (−0.063), where the target month is November and the January 2009
-logs are truncated; excluding it, the old block is flat (−0.0011) and the new one
-is +0.0058.
+Every variant lands within ±0.001 of the same model without the block, and every
+variant wins roughly half its splits. The per-split spread is an order of
+magnitude larger than the mean: individual splits move by up to ±0.010 in either
+direction. That is the honest reading — the location block neither helps nor
+hurts, and the earlier claim that it was a consistent +0.0085 gain does not
+survive a faithful re-run.
 
 The Gini row is the direct answer to whether it should stay: on its own it is
-indistinguishable from noise, and adding it to the six-column block *costs*
-0.0014 of AUC on average (0.0071 against 0.0085) while winning the same 8/8
-splits. It is not that the coefficient is useless in principle — it is that
+indistinguishable from noise, and adding it to the six-column block does not
+change that. It is not that the coefficient is useless in principle — it is that
 whatever it measures is already covered by the zone count and the zone-level
 columns, and the extra column only gives the model another noisy axis to split
 on.
 
 This block is also by far the most expensive part of the feature table, which is
-why it is a choice at all. On one month of data, the three general feature
-functions (sessions, monthly player aggregates, class aggregates) take about
-0.1 s, while the zone pass takes 0.22 s to encode and 0.14 s to turn into
-features. Dropping the Gini is what makes it cheap: with `add_gini=True` the same
-step took 1.6 s.
+why it is a choice at all. On March 2008 (8,429 characters, 1.22M heartbeats),
+the general feature functions (sessions, monthly player aggregates, class
+aggregates) take about 0.2 s, while the zone pass takes 0.21 s to encode and
+0.16 s to turn into features. Dropping the Gini is what makes it cheap: with
+`add_gini=True` the same step takes 1.65 s instead of 0.16 s, a tenfold
+difference.
 
 ```python
 use_location = skrub.choose_bool(name="location_features")
