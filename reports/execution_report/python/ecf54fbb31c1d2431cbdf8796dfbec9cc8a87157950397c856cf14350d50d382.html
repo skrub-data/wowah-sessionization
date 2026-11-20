@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-US">
 <head>
 <meta charset="UTF-8">
 <title>add_churn</title>
@@ -14,41 +14,81 @@ pre[data-line]{position:relative;padding:1em 0 1em 3em}.line-highlight{position:
 </style>
 
 <style>
-  body { font-family: sans-serif; max-width: 100%; margin: 2em auto; padding: 2em; }
-  pre[class*="language-"] { font-size: 0.95em; }
+  /* compact layout: this page is displayed in the drawer of the index page */
+  html, body { height: 100%; }
+  body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 1em 1.5em;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  /* The file name stays visible and the code scrolls on its own, so that the
+     horizontal scrollbar is always at the bottom of the view. */
+  h1 {
+    flex: none;
+    margin: 0 0 0.75em;
+    font-size: 1.15rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .code-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  /* Let .code-scroll do the scrolling (instead of the <pre> from prism) so that
+     the horizontal scrollbar sits at the bottom of the view. */
+  pre[class*="language-"] {
+    font-size: 0.95em;
+    margin: 0;
+    box-sizing: border-box;
+    width: max-content;
+    min-width: 100%;
+    overflow: visible;
+  }
+  /* Prism sets a pixel width on the highlight when a line is selected; that
+     width goes stale when the drawer is resized and then makes the page scroll
+     horizontally. Let it span the code block instead (it is positioned with
+     left: 0 and right: 0). */
+  .line-highlight { width: auto !important; }
 </style>
 </head>
 <body>
 
     <h1><code>/Users/rcap/work/wowah-sessionization/add_churn.py</code></h1>
 
+<div class="code-scroll">
 <pre id="code-container" class="line-numbers" data-line=""><code class="language-python" id="code">&#34;&#34;&#34;
-This script is used to add a &#34;target&#34; column to the dataset.
+This script builds the (char, month) table with the prediction target.
 
-The idea is that, given a month, we want to use all the data up to the last day
-of the previous month to predict whether a user will churn in the next month.
+The idea is that, given a month M, we use all the data up to the last day of the
+previous month (M - 1) to predict whether a character will be absent in both
+M and M + 1 (&#34;churn_next&#34;).
 
-So, if we are in the month of April, we want to use all the data up to March 31st
-to predict whether a user will churn in May. We want to predict May because we
-might want to take action in April to prevent the user from churning in May.
+So, if we are in the month of April, we use all the data up to March 31st to
+predict whether a character will be absent in both April and May. We look at
+May because we might want to take action in April to prevent the character from
+churning.
 
-To do this, we need to create a dataset that has one row per user per month,
-and a column that indicates whether the user has played in that month or not.
+To do this, we need one row per character per month, and a &#34;has_played&#34; column
+that is True if the character played in that month, and False otherwise:
 
-We need then to create a dataset with all the months in the range we have data for,
-then we need to do the cross product with the unique characters.
-Now we want to prepare the data we have so that the &#34;has played&#34; colum is True
-if the user has played in that month, and False otherwise.
+- we create all the months in the range we have data for, and take the cross
+  product with the unique characters;
+- we find all the unique (char, month) combinations in the original dataset,
+  and left join them to the cross product. Null values in &#34;has_played&#34; are
+  filled with False;
+- months prior to the first month a character appears in are filtered out.
 
-We can do this by finding all the unique combinations of user and month in the
-original dataset, and then doing a left join with the &#34;user month&#34; dataset.
-Any null values in the &#34;has played&#34; column will be filled with False, indicating
-that the user did not play in that month.
-Unique combinations of user and month include months prior to the first month
-a player has appeared in the dataset, so they need to be filtered out before
-creating the final dataset.
+From &#34;has_played&#34; we derive:
 
-This is the &#34;churn&#34; dataset, which we can then use to train a model.
+- &#34;prev_played&#34;: &#34;has_played&#34; in the previous month;
+- &#34;churn&#34;: the character is absent this month AND the previous month;
+- &#34;churn_next&#34;: &#34;churn&#34; in the following month, i.e. the target.
+
+Since the features of month M are built from M - 1, a character that was already
+absent in M - 1 has no features. `build_churn_dataset(only_prev_active=True)`
+keeps only the rows where the character played in M - 1.
 &#34;&#34;&#34;
 
 # %%
@@ -84,13 +124,9 @@ def make_user_month(df, interval=&#34;1mo&#34;):
 
     This is done with a cross-product between the unique users and the range of months.
 
-    This function is artificially generating months past the last month in the dataset.
-    This is because we are also adding lagged features with lags of up to 3 months.
-    At train time, we have access to all the information. If we try to predict churn
-    for one of the months we have lagged information for, the model should not crash.
-    It will still be missing the information &#34;for the current month&#34;, but the
-    lagged information will be available.
-    This is more a sanity check than anything else.
+    This function is artificially generating 3 months past the last month in the
+    dataset. Their &#34;churn_next&#34; is null, so `build_churn_dataset` drops them: they
+    are only visible when calling `add_churn` directly.
 
     Note that since the months are generated from the range of the dataset, they
     may include months prior to a user&#39;s first activity. These will need to be
@@ -136,7 +172,8 @@ def add_churn(user_month, data):
     built from the previous month&#39;s data, so the target cannot be the churn
     status of the same month: that status includes &#34;absent last month&#34;, which
     is exactly what the features reveal. &#34;churn_next&#34; is null for the last
-    month in the data, because the following month has not been observed.
+    observed month and for the padding months added by `make_user_month`,
+    because the following month has not been observed.
     &#34;&#34;&#34;
 
     last_month = data.lazy().select(pl.col(&#34;month&#34;).max()).collect().item()
@@ -163,55 +200,53 @@ def add_churn(user_month, data):
         )
         .with_columns(
             # churn = absent this month AND absent last month
-            # null on a character&#39;s first month is filled with False
-            churn=pl.col(&#34;prev_played&#34;).is_not_null()
-            &amp; ~pl.col(&#34;has_played&#34;).fill_null(False)
-            &amp; ~pl.col(&#34;prev_played&#34;).fill_null(False)
+            # prev_played is False on a character&#39;s first month
+            churn=~pl.col(&#34;has_played&#34;) &amp; ~pl.col(&#34;prev_played&#34;)
         )
         .with_columns(
             churn_next=pl.when(pl.col(&#34;month&#34;).dt.offset_by(&#34;1mo&#34;) &lt;= last_month)
             .then(pl.col(&#34;churn&#34;).shift(-1).over(&#34;char&#34;))
             .otherwise(None)
         )
+        .select(
+            &#34;char&#34;,
+            &#34;month&#34;,
+            &#34;has_played&#34;,
+            &#34;prev_played&#34;,
+            &#34;churn&#34;,
+            &#34;churn_next&#34;,
+            &#34;first_month&#34;,
+        )
     )
     return df_with_user_month
 
 
-def remove_unrealistic_entries(churn_data, data):
+def build_churn_dataset(historical_data, only_prev_active=False):
     &#34;&#34;&#34;
-    Remove entries from the churn data where the month is before the first month
-    seen for the character. This ensures that we do not have rows for months that
-    are unrealistic given the player&#39;s activity history.
+    Build the (char, month) table with `has_played`, `prev_played`, `churn` and
+    the target `churn_next`.
+
+    Rows whose target is unknown (the last observed month and the padding months
+    after it) cannot be used to train or evaluate a model, so they are dropped.
+
+    With `only_prev_active=True`, only the rows where the character played in the
+    previous month are kept. Features for a row at month M are built from month
+    M - 1, so a character that was already absent in M - 1 has no features and
+    is not a prediction we could act on: the target then only contains
+    characters that were active in M - 1 and are absent in both M and M + 1.
+    Keep the default (all rows) when the full (char, month) grid is needed, for
+    example to build lagged features, which need each character&#39;s full timeline.
     &#34;&#34;&#34;
-    churn_data = (
-        churn_data.join(
-            data.select(&#34;char&#34;, &#34;first_month&#34;).unique(), on=&#34;char&#34;, how=&#34;left&#34;
-        )
-        .filter(pl.col(&#34;month&#34;) &gt;= pl.col(&#34;first_month_right&#34;))
-        .drop(&#34;first_month&#34;)
-        .select(
-            pl.col(&#34;char&#34;),
-            pl.col(&#34;month&#34;),
-            pl.col(&#34;has_played&#34;),
-            pl.col(&#34;prev_played&#34;),
-            pl.col(&#34;churn&#34;),
-            pl.col(&#34;churn_next&#34;),
-            pl.col(&#34;first_month_right&#34;).alias(&#34;first_month&#34;),
-        )
-    )
-    return churn_data
-
-
-def build_churn_dataset(historical_data):
     # Load the dataset
     data = make_data(historical_data)
     # Add the combinations of user months
     user_month = make_user_month(historical_data)
-    churn_data = add_churn(user_month, data)
-    churn_data = remove_unrealistic_entries(churn_data, data)
-    # Rows whose target is unknown (the last observed month and the padding
-    # months after it) cannot be used to train or evaluate a model.
-    return churn_data.filter(pl.col(&#34;churn_next&#34;).is_not_null()).collect()
+    churn_data = add_churn(user_month, data).filter(
+        pl.col(&#34;churn_next&#34;).is_not_null()
+    )
+    if only_prev_active:
+        churn_data = churn_data.filter(pl.col(&#34;prev_played&#34;))
+    return churn_data.collect()
 
 
 if __name__ == &#34;__main__&#34;:
@@ -219,6 +254,7 @@ if __name__ == &#34;__main__&#34;:
     print(churn_data.head())
     # churn_data.write_parquet(&#34;data/wowah_churn_data.parquet&#34;)
 </code></pre>
+</div>
 
 <script>
 var _self="undefined"!=typeof window?window:"undefined"!=typeof WorkerGlobalScope&&self instanceof WorkerGlobalScope?self:{},Prism=function(e){var n=/(?:^|\s)lang(?:uage)?-([\w-]+)(?=\s|$)/i,t=0,r={},a={manual:e.Prism&&e.Prism.manual,disableWorkerMessageHandler:e.Prism&&e.Prism.disableWorkerMessageHandler,util:{encode:function e(n){return n instanceof i?new i(n.type,e(n.content),n.alias):Array.isArray(n)?n.map(e):n.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/\u00a0/g," ")},type:function(e){return Object.prototype.toString.call(e).slice(8,-1)},objId:function(e){return e.__id||Object.defineProperty(e,"__id",{value:++t}),e.__id},clone:function e(n,t){var r,i;switch(t=t||{},a.util.type(n)){case"Object":if(i=a.util.objId(n),t[i])return t[i];for(var l in r={},t[i]=r,n)n.hasOwnProperty(l)&&(r[l]=e(n[l],t));return r;case"Array":return i=a.util.objId(n),t[i]?t[i]:(r=[],t[i]=r,n.forEach((function(n,a){r[a]=e(n,t)})),r);default:return n}},getLanguage:function(e){for(;e;){var t=n.exec(e.className);if(t)return t[1].toLowerCase();e=e.parentElement}return"none"},setLanguage:function(e,t){e.className=e.className.replace(RegExp(n,"gi"),""),e.classList.add("language-"+t)},currentScript:function(){if("undefined"==typeof document)return null;if("currentScript"in document)return document.currentScript;try{throw new Error}catch(r){var e=(/at [^(\r\n]*\((.*):[^:]+:[^:]+\)$/i.exec(r.stack)||[])[1];if(e){var n=document.getElementsByTagName("script");for(var t in n)if(n[t].src==e)return n[t]}return null}},isActive:function(e,n,t){for(var r="no-"+n;e;){var a=e.classList;if(a.contains(n))return!0;if(a.contains(r))return!1;e=e.parentElement}return!!t}},languages:{plain:r,plaintext:r,text:r,txt:r,extend:function(e,n){var t=a.util.clone(a.languages[e]);for(var r in n)t[r]=n[r];return t},insertBefore:function(e,n,t,r){var i=(r=r||a.languages)[e],l={};for(var o in i)if(i.hasOwnProperty(o)){if(o==n)for(var s in t)t.hasOwnProperty(s)&&(l[s]=t[s]);t.hasOwnProperty(o)||(l[o]=i[o])}var u=r[e];return r[e]=l,a.languages.DFS(a.languages,(function(n,t){t===u&&n!=e&&(this[n]=l)})),l},DFS:function e(n,t,r,i){i=i||{};var l=a.util.objId;for(var o in n)if(n.hasOwnProperty(o)){t.call(n,o,n[o],r||o);var s=n[o],u=a.util.type(s);"Object"!==u||i[l(s)]?"Array"!==u||i[l(s)]||(i[l(s)]=!0,e(s,t,o,i)):(i[l(s)]=!0,e(s,t,null,i))}}},plugins:{},highlightAll:function(e,n){a.highlightAllUnder(document,e,n)},highlightAllUnder:function(e,n,t){var r={callback:t,container:e,selector:'code[class*="language-"], [class*="language-"] code, code[class*="lang-"], [class*="lang-"] code'};a.hooks.run("before-highlightall",r),r.elements=Array.prototype.slice.apply(r.container.querySelectorAll(r.selector)),a.hooks.run("before-all-elements-highlight",r);for(var i,l=0;i=r.elements[l++];)a.highlightElement(i,!0===n,r.callback)},highlightElement:function(n,t,r){var i=a.util.getLanguage(n),l=a.languages[i];a.util.setLanguage(n,i);var o=n.parentElement;o&&"pre"===o.nodeName.toLowerCase()&&a.util.setLanguage(o,i);var s={element:n,language:i,grammar:l,code:n.textContent};function u(e){s.highlightedCode=e,a.hooks.run("before-insert",s),s.element.innerHTML=s.highlightedCode,a.hooks.run("after-highlight",s),a.hooks.run("complete",s),r&&r.call(s.element)}if(a.hooks.run("before-sanity-check",s),(o=s.element.parentElement)&&"pre"===o.nodeName.toLowerCase()&&!o.hasAttribute("tabindex")&&o.setAttribute("tabindex","0"),!s.code)return a.hooks.run("complete",s),void(r&&r.call(s.element));if(a.hooks.run("before-highlight",s),s.grammar)if(t&&e.Worker){var c=new Worker(a.filename);c.onmessage=function(e){u(e.data)},c.postMessage(JSON.stringify({language:s.language,code:s.code,immediateClose:!0}))}else u(a.highlight(s.code,s.grammar,s.language));else u(a.util.encode(s.code))},highlight:function(e,n,t){var r={code:e,grammar:n,language:t};if(a.hooks.run("before-tokenize",r),!r.grammar)throw new Error('The language "'+r.language+'" has no grammar.');return r.tokens=a.tokenize(r.code,r.grammar),a.hooks.run("after-tokenize",r),i.stringify(a.util.encode(r.tokens),r.language)},tokenize:function(e,n){var t=n.rest;if(t){for(var r in t)n[r]=t[r];delete n.rest}var a=new s;return u(a,a.head,e),o(e,a,n,a.head,0),function(e){for(var n=[],t=e.head.next;t!==e.tail;)n.push(t.value),t=t.next;return n}(a)},hooks:{all:{},add:function(e,n){var t=a.hooks.all;t[e]=t[e]||[],t[e].push(n)},run:function(e,n){var t=a.hooks.all[e];if(t&&t.length)for(var r,i=0;r=t[i++];)r(n)}},Token:i};function i(e,n,t,r){this.type=e,this.content=n,this.alias=t,this.length=0|(r||"").length}function l(e,n,t,r){e.lastIndex=n;var a=e.exec(t);if(a&&r&&a[1]){var i=a[1].length;a.index+=i,a[0]=a[0].slice(i)}return a}function o(e,n,t,r,s,g){for(var f in t)if(t.hasOwnProperty(f)&&t[f]){var h=t[f];h=Array.isArray(h)?h:[h];for(var d=0;d<h.length;++d){if(g&&g.cause==f+","+d)return;var v=h[d],p=v.inside,m=!!v.lookbehind,y=!!v.greedy,k=v.alias;if(y&&!v.pattern.global){var x=v.pattern.toString().match(/[imsuy]*$/)[0];v.pattern=RegExp(v.pattern.source,x+"g")}for(var b=v.pattern||v,w=r.next,A=s;w!==n.tail&&!(g&&A>=g.reach);A+=w.value.length,w=w.next){var E=w.value;if(n.length>e.length)return;if(!(E instanceof i)){var P,L=1;if(y){if(!(P=l(b,A,e,m))||P.index>=e.length)break;var S=P.index,O=P.index+P[0].length,j=A;for(j+=w.value.length;S>=j;)j+=(w=w.next).value.length;if(A=j-=w.value.length,w.value instanceof i)continue;for(var C=w;C!==n.tail&&(j<O||"string"==typeof C.value);C=C.next)L++,j+=C.value.length;L--,E=e.slice(A,j),P.index-=A}else if(!(P=l(b,0,E,m)))continue;S=P.index;var N=P[0],_=E.slice(0,S),M=E.slice(S+N.length),W=A+E.length;g&&W>g.reach&&(g.reach=W);var z=w.prev;if(_&&(z=u(n,z,_),A+=_.length),c(n,z,L),w=u(n,z,new i(f,p?a.tokenize(N,p):N,k,N)),M&&u(n,w,M),L>1){var I={cause:f+","+d,reach:W};o(e,n,t,w.prev,A,I),g&&I.reach>g.reach&&(g.reach=I.reach)}}}}}}function s(){var e={value:null,prev:null,next:null},n={value:null,prev:e,next:null};e.next=n,this.head=e,this.tail=n,this.length=0}function u(e,n,t){var r=n.next,a={value:t,prev:n,next:r};return n.next=a,r.prev=a,e.length++,a}function c(e,n,t){for(var r=n.next,a=0;a<t&&r!==e.tail;a++)r=r.next;n.next=r,r.prev=n,e.length-=a}if(e.Prism=a,i.stringify=function e(n,t){if("string"==typeof n)return n;if(Array.isArray(n)){var r="";return n.forEach((function(n){r+=e(n,t)})),r}var i={type:n.type,content:e(n.content,t),tag:"span",classes:["token",n.type],attributes:{},language:t},l=n.alias;l&&(Array.isArray(l)?Array.prototype.push.apply(i.classes,l):i.classes.push(l)),a.hooks.run("wrap",i);var o="";for(var s in i.attributes)o+=" "+s+'="'+(i.attributes[s]||"").replace(/"/g,"&quot;")+'"';return"<"+i.tag+' class="'+i.classes.join(" ")+'"'+o+">"+i.content+"</"+i.tag+">"},!e.document)return e.addEventListener?(a.disableWorkerMessageHandler||e.addEventListener("message",(function(n){var t=JSON.parse(n.data),r=t.language,i=t.code,l=t.immediateClose;e.postMessage(a.highlight(i,a.languages[r],r)),l&&e.close()}),!1),a):a;var g=a.util.currentScript();function f(){a.manual||a.highlightAll()}if(g&&(a.filename=g.src,g.hasAttribute("data-manual")&&(a.manual=!0)),!a.manual){var h=document.readyState;"loading"===h||"interactive"===h&&g&&g.defer?document.addEventListener("DOMContentLoaded",f):window.requestAnimationFrame?window.requestAnimationFrame(f):window.setTimeout(f,16)}return a}(_self);"undefined"!=typeof module&&module.exports&&(module.exports=Prism),"undefined"!=typeof global&&(global.Prism=Prism);

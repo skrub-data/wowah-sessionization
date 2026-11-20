@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="en-US">
 
 <head>
     <meta charset="utf-8">
@@ -46,6 +46,18 @@ pre, code {
     transform: translateY(2px);
 }
 
+.graph-hint {
+    display: inline-block;
+    max-width: 100%;
+    margin: 0 0 0.75rem;
+    padding: 10px 12px;
+    border-left: 4px solid #6b9bd2;
+    border-radius: 3px;
+    background: #eef4fb;
+    color: #1f3b5c;
+    font-size: 0.95rem;
+}
+
 .data_op-node-wrapper {
     overflow-x: auto;
 }
@@ -68,8 +80,9 @@ pre, code {
 }
 
 .data_op-node > nav.main-nav {
-    border-right: 2px solid #ccc;
     flex-shrink: 0;
+    min-width: 8rem;
+    box-sizing: border-box;
 }
 
 .node-details {
@@ -77,22 +90,85 @@ pre, code {
     flex-shrink: 1;
 }
 
-.data_op-node > nav.main-nav {
-    resize: horizontal;
-    min-width: 8rem;
-    /* A wide graph scrolls rather than squeezing the node details. */
-    max-width: 75vw;
-    box-sizing: border-box;
-}
-
-.data_op-node > .node-frame {
-    flex-grow: 1;
-    flex-shrink: 1;
+/* Drawer displaying the selected node (or a source file) next to the graph. */
+.data_op-node > .drawer {
+    display: none;
+    flex-direction: column;
+    flex: 1 1 0;
     min-width: 0;
     padding: 0;
-    border: none;
+    overflow: hidden;
+}
+
+.drawer-open .data_op-node > .drawer {
+    display: flex;
+}
+
+/* The node page and the source page are stacked. The one not displayed is only
+   invisible, not display: none, so that the node page keeps its scroll position
+   and the source page can scroll to its highlighted line while it loads. The
+   keyboard does not reach an invisible iframe either. */
+.drawer-body {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.drawer-body > iframe {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
+    padding: 0;
+    border: none;
+}
+
+.drawer[data-mode="node"] #source-frame,
+.drawer[data-mode="source"] #node-frame {
+    visibility: hidden;
+}
+
+.drawer[data-mode="source"] #close-drawer,
+.drawer[data-mode="node"] #back-to-node {
+    display: none;
+}
+
+.drawer-toolbar {
+    display: flex;
+    flex: none;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border-bottom: 1px solid #ddd;
+    background: #fafafa;
+}
+
+.header-button,
+.drawer-toolbar button {
+    padding: 4px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.header-button:hover:not(:disabled),
+.drawer-toolbar button:hover {
+    background: #f0f0f0;
+}
+
+.header-button:disabled {
+    color: #999;
+    cursor: default;
+}
+
+.header-button:focus-visible,
+.drawer-toolbar button:focus-visible {
+    outline: 2px solid #6b9bd2;
+    outline-offset: 1px;
 }
 
 /* Node pages are displayed inside the iframe of the index page: they fill it
@@ -162,8 +238,8 @@ pre, code {
     margin-top: 2rem;
 }
 
-/* Layout of the index page: a header (toggle button and report title), below
-   it the graph and the iframe displaying the selected node. */
+/* Layout of the index page: a header with the title and graph toggle, below it
+   the graph and the drawer displaying the selected node. */
 .report-index {
     margin: 0;
     height: 100vh;
@@ -175,8 +251,10 @@ pre, code {
     flex: none;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #ddd;
+    background: #fafafa;
 }
 
 .report-index > .data_op-node-wrapper {
@@ -191,16 +269,155 @@ pre, code {
     min-height: 0;
 }
 
-.icon-button {
+.report-index .data_op-node > nav.main-nav {
+    flex: 1 1 auto;
+}
+
+/* The graph is not scrolled but panned and zoomed in a viewport filling the
+   panel (see data_ops-report.js). */
+.report-index .data_op-node > nav.main-nav[data-is-open] {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.graph-toolbar {
     flex: none;
-    padding: 2px;
-    width: 24px;
-    height: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.graph-toolbar .graph-hint {
+    margin: 0;
+}
+
+#graph-nav {
+    flex: 1 1 0;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #ddd;
+    cursor: grab;
+    /* we handle touch gestures */
+    touch-action: none;
+}
+
+#graph-nav.panning {
+    cursor: grabbing;
+}
+
+#graph-canvas {
+    width: max-content;
+    user-select: none;
+}
+
+#graph-canvas svg {
+    display: block;
+}
+
+.graph-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.graph-controls button {
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.5rem;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.95);
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.graph-controls button:hover {
+    background: #eef4fb;
+}
+
+/* When the drawer is open the graph and the drawer share the width; the
+   splitter between them sets the share (--graph-width, see data_ops-report.js). */
+.report-index.drawer-open .data_op-node > nav.main-nav {
+    flex: 0 0 auto;
+    width: var(--graph-width, 50%);
+}
+
+/* Draggable divider between the graph and the drawer. The whole line can be
+   dragged (it is wider than it looks, to be easy to grab), and the handle in
+   the middle shows that it can be. Only displayed when both panels are. */
+.data_op-node > .splitter {
+    display: none;
+    position: relative;
+    flex: none;
+    width: 16px;
+    padding: 0;
+    overflow: visible;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(#ccc, #ccc) center / 2px 100% no-repeat;
+    cursor: col-resize;
+    /* we handle touch gestures */
+    touch-action: none;
+}
+
+.drawer-open .data_op-node > nav.main-nav[data-is-open] + .splitter {
+    display: flex;
+}
+
+.splitter-handle {
+    width: 16px;
+    height: 64px;
+    border: 1px solid #888;
+    border-radius: 8px;
+    background:
+        radial-gradient(circle, #666 1.5px, transparent 2px) center / 6px 10px repeat-y,
+        #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+}
+
+.splitter:hover,
+.splitter.dragging {
+    background-image: linear-gradient(#6b9bd2, #6b9bd2);
+}
+
+.splitter:hover .splitter-handle,
+.splitter.dragging .splitter-handle {
+    border-color: #6b9bd2;
+}
+
+.splitter:focus-visible {
+    outline: 2px solid #6b9bd2;
+}
+
+/* While dragging, the pointer must not be captured by the iframes nor select
+   text. */
+.report-index.resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+.report-index.resizing iframe {
+    pointer-events: none;
+}
+
+.header-button {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    margin-left: auto;
 }
 
 .report-title {
+    flex: 0 1 auto;
     margin: 0;
     min-width: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -216,13 +433,32 @@ pre, code {
 }
     </style>
     <script>
- // Tell index.html (which displays this page in an iframe) which node is shown
- // (null when no particular node is).
- if (window.parent !== window) {
-     window.parent.postMessage(
-         {type: "skrub-report-node-shown", nodeId: 4}, "*");
- }
-</script>
+     // Included in node pages. When a node page is displayed in the drawer of
+// index.html (see data_ops-report.js), clicks on links to other nodes or to
+// source files are not followed here: we ask the index page to display them,
+// so that it stays in charge of what is shown (and of the browser's history).
+// Nothing happens when the page is opened on its own.
+(function () {
+    if (window.parent === window) {
+        return;
+    }
+    document.addEventListener("click", (event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey ||
+            event.shiftKey || event.altKey) {
+            return;
+        }
+        const link = event.target.closest('a[href^="node_"], a[href^="python/"]');
+        if (!link) {
+            return;
+        }
+        event.preventDefault();
+        // The target origin must be "*": for file:// URLs the origin is opaque,
+        // so it cannot be named.
+        window.parent.postMessage(
+            {type: "skrub-report-link", href: link.getAttribute("href")}, "*");
+    });
+})();
+    </script>
 </head>
 
 <body class="node-page">
@@ -246,7 +482,7 @@ pre, code {
                         </li>
                     </ul>
                 </nav>
-                <samp>ID:</samp> <samp>226642527659001389935275468608090884685</samp>
+                <samp>ID:</samp> <samp>4447092680353970327855415851494039662</samp>
                 
                 <div>
                     
@@ -272,9 +508,9 @@ pre, code {
 
                 <div>
                     <h3>Where was this step created?</h3>
-                    <pre><code class="node-creation-stack">File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L414">/Users/rcap/work/wowah-sessionization/main.py, line 414</a>, in &lt;module&gt;
-<span class="node-creation-stack-line">results, data_op = evaluate(args.env, load_fraction=args.fraction)</span>File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L354">/Users/rcap/work/wowah-sessionization/main.py, line 354</a>, in evaluate
-<span class="node-creation-stack-line">data_op = make_data_op(load_fraction=load_fraction)</span>File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L278">/Users/rcap/work/wowah-sessionization/main.py, line 278</a>, in make_data_op
+                    <pre><code class="node-creation-stack">File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L470">/Users/rcap/work/wowah-sessionization/main.py, line 470</a>, in &lt;module&gt;
+<span class="node-creation-stack-line">results, data_op = evaluate(args.env, load_fraction=args.fraction)</span>File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L410">/Users/rcap/work/wowah-sessionization/main.py, line 410</a>, in evaluate
+<span class="node-creation-stack-line">data_op = make_data_op(load_fraction=load_fraction)</span>File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L330">/Users/rcap/work/wowah-sessionization/main.py, line 330</a>, in make_data_op
 <span class="node-creation-stack-line">X = user_month_has_played[&#34;char&#34;, &#34;month&#34;].skb.mark_as_X(cv=Splitter())</span></code></pre>
                 </div>
                 
@@ -282,7 +518,7 @@ pre, code {
                 
                 <div>
                     <h3>Computation time</h3>
-                    <code>0h 0m 5.9e-05s</code>
+                    <code>0h 0m 2.9e-05s</code>
                 </div>
                 
 
@@ -297,8 +533,8 @@ pre, code {
                     
                     <div>
                         
-<div id="report_8c8d8d22-wrapper" hidden>
-    <template id="report_8c8d8d22-template">
+<div id="report_04ab4fb3-wrapper" hidden>
+    <template id="report_04ab4fb3-template">
         <style>
          /*!
 Pure v3.0.0
@@ -1725,7 +1961,7 @@ button.tab[data-has-warning]:not(:hover):not([data-is-selected]) {
                 
                 
                 <th
-                id="bf8d3694"
+                id="640c1225"
                 class="table-cell elided-short clickable"
                 
                 data-role="column-name"
@@ -1755,7 +1991,7 @@ data-spans__-1__0
                 
                 
                 <th
-                id="2dbca11e"
+                id="1d875847"
                 class="table-cell elided-short clickable"
                 
                 data-role="column-name"
@@ -1795,7 +2031,7 @@ data-spans__-1__1
                 
                 
                 <td
-                id="829a6847"
+                id="1e41df48"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -1816,16 +2052,16 @@ data-spans__0__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="12274"
-                data-value-str="12274"
+                data-value-repr="6"
+                data-value-str="6"
                 
                 data-column-idx="0"
                 
-                >12,274</td>
+                >6</td>
                 
                 
                 <td
-                id="22c03c56"
+                id="109e3484"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -1846,12 +2082,12 @@ data-spans__0__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 4, 1, 0, 0)"
-                data-value-str="2006-04-01 00:00:00"
+                data-value-repr="datetime.datetime(2006, 1, 1, 0, 0)"
+                data-value-str="2006-01-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2006-04-01 00:00:00</td>
+                >2006-01-01 00:00:00</td>
                 
             </tr>
             
@@ -1859,7 +2095,7 @@ data-spans__0__1
                 
                 
                 <td
-                id="b412cf75"
+                id="3ff9bbda"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -1880,16 +2116,16 @@ data-spans__1__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="12274"
-                data-value-str="12274"
+                data-value-repr="6"
+                data-value-str="6"
                 
                 data-column-idx="0"
                 
-                >12,274</td>
+                >6</td>
                 
                 
                 <td
-                id="c8a90516"
+                id="f23ac6bc"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -1910,12 +2146,12 @@ data-spans__1__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 5, 1, 0, 0)"
-                data-value-str="2006-05-01 00:00:00"
+                data-value-repr="datetime.datetime(2006, 2, 1, 0, 0)"
+                data-value-str="2006-02-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2006-05-01 00:00:00</td>
+                >2006-02-01 00:00:00</td>
                 
             </tr>
             
@@ -1923,7 +2159,7 @@ data-spans__1__1
                 
                 
                 <td
-                id="648b52c5"
+                id="e2e2bff0"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -1944,16 +2180,16 @@ data-spans__2__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="12274"
-                data-value-str="12274"
+                data-value-repr="6"
+                data-value-str="6"
                 
                 data-column-idx="0"
                 
-                >12,274</td>
+                >6</td>
                 
                 
                 <td
-                id="e92daf52"
+                id="e4fd90d2"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -1974,12 +2210,12 @@ data-spans__2__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 6, 1, 0, 0)"
-                data-value-str="2006-06-01 00:00:00"
+                data-value-repr="datetime.datetime(2006, 3, 1, 0, 0)"
+                data-value-str="2006-03-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2006-06-01 00:00:00</td>
+                >2006-03-01 00:00:00</td>
                 
             </tr>
             
@@ -1987,7 +2223,7 @@ data-spans__2__1
                 
                 
                 <td
-                id="6e5911b7"
+                id="48a2e54c"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2008,16 +2244,16 @@ data-spans__3__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="12274"
-                data-value-str="12274"
+                data-value-repr="6"
+                data-value-str="6"
                 
                 data-column-idx="0"
                 
-                >12,274</td>
+                >6</td>
                 
                 
                 <td
-                id="fde08a31"
+                id="3669dc0e"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2038,12 +2274,12 @@ data-spans__3__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 7, 1, 0, 0)"
-                data-value-str="2006-07-01 00:00:00"
+                data-value-repr="datetime.datetime(2006, 4, 1, 0, 0)"
+                data-value-str="2006-04-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2006-07-01 00:00:00</td>
+                >2006-04-01 00:00:00</td>
                 
             </tr>
             
@@ -2051,7 +2287,7 @@ data-spans__3__1
                 
                 
                 <td
-                id="f0ed556c"
+                id="3fc1c083"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2072,16 +2308,16 @@ data-spans__4__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="12274"
-                data-value-str="12274"
+                data-value-repr="6"
+                data-value-str="6"
                 
                 data-column-idx="0"
                 
-                >12,274</td>
+                >6</td>
                 
                 
                 <td
-                id="797af924"
+                id="306eb485"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2102,12 +2338,12 @@ data-spans__4__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 8, 1, 0, 0)"
-                data-value-str="2006-08-01 00:00:00"
+                data-value-repr="datetime.datetime(2006, 5, 1, 0, 0)"
+                data-value-str="2006-05-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2006-08-01 00:00:00</td>
+                >2006-05-01 00:00:00</td>
                 
             </tr>
             
@@ -2149,7 +2385,7 @@ data-spans__4__1
                 
                 
                 <td
-                id="fec4e6c2"
+                id="af2c55e9"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2170,16 +2406,16 @@ data-spans__5__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="60063"
-                data-value-str="60063"
+                data-value-repr="77408"
+                data-value-str="77408"
                 
                 data-column-idx="0"
                 
-                >60,063</td>
+                >77,408</td>
                 
                 
                 <td
-                id="ed18861b"
+                id="2dbeae7a"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2200,12 +2436,12 @@ data-spans__5__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2008, 5, 1, 0, 0)"
-                data-value-str="2008-05-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 9, 1, 0, 0)"
+                data-value-str="2008-09-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2008-05-01 00:00:00</td>
+                >2008-09-01 00:00:00</td>
                 
             </tr>
             
@@ -2213,7 +2449,7 @@ data-spans__5__1
                 
                 
                 <td
-                id="7a9f6f07"
+                id="0eaa1d13"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2234,16 +2470,16 @@ data-spans__6__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="60063"
-                data-value-str="60063"
+                data-value-repr="77409"
+                data-value-str="77409"
                 
                 data-column-idx="0"
                 
-                >60,063</td>
+                >77,409</td>
                 
                 
                 <td
-                id="d91b4842"
+                id="a2278489"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2264,12 +2500,12 @@ data-spans__6__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2008, 6, 1, 0, 0)"
-                data-value-str="2008-06-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 9, 1, 0, 0)"
+                data-value-str="2008-09-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2008-06-01 00:00:00</td>
+                >2008-09-01 00:00:00</td>
                 
             </tr>
             
@@ -2277,7 +2513,7 @@ data-spans__6__1
                 
                 
                 <td
-                id="92525907"
+                id="6b35725f"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2298,16 +2534,16 @@ data-spans__7__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="60063"
-                data-value-str="60063"
+                data-value-repr="77419"
+                data-value-str="77419"
                 
                 data-column-idx="0"
                 
-                >60,063</td>
+                >77,419</td>
                 
                 
                 <td
-                id="562432eb"
+                id="a12a7361"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2328,12 +2564,12 @@ data-spans__7__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2008, 7, 1, 0, 0)"
-                data-value-str="2008-07-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 9, 1, 0, 0)"
+                data-value-str="2008-09-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2008-07-01 00:00:00</td>
+                >2008-09-01 00:00:00</td>
                 
             </tr>
             
@@ -2341,7 +2577,7 @@ data-spans__7__1
                 
                 
                 <td
-                id="60079ec0"
+                id="115234b8"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2362,16 +2598,16 @@ data-spans__8__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="60063"
-                data-value-str="60063"
+                data-value-repr="77433"
+                data-value-str="77433"
                 
                 data-column-idx="0"
                 
-                >60,063</td>
+                >77,433</td>
                 
                 
                 <td
-                id="889cafba"
+                id="660e6b76"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2392,12 +2628,12 @@ data-spans__8__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2008, 8, 1, 0, 0)"
-                data-value-str="2008-08-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 9, 1, 0, 0)"
+                data-value-str="2008-09-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2008-08-01 00:00:00</td>
+                >2008-09-01 00:00:00</td>
                 
             </tr>
             
@@ -2405,7 +2641,7 @@ data-spans__8__1
                 
                 
                 <td
-                id="f3302c70"
+                id="dd474694"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2426,16 +2662,16 @@ data-spans__9__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="60063"
-                data-value-str="60063"
+                data-value-repr="77435"
+                data-value-str="77435"
                 
                 data-column-idx="0"
                 
-                >60,063</td>
+                >77,435</td>
                 
                 
                 <td
-                id="0f7aeb13"
+                id="8e02c53e"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2473,7 +2709,7 @@ data-spans__9__1
 
     <div class="table-footer">
     <div>
-        <strong>146,027</strong> rows ✕
+        <strong>23,896</strong> rows ✕
         <strong data-manager="ColumnFilterMatchCount"
             data-test="n-columns-display">2</strong> columns
         
@@ -2542,7 +2778,7 @@ data-spans__9__1
                 
                 <dt>Unique values</dt>
                 <dd>
-                    7,855 (5.4%)
+                    7,704 (32.2%)
                     
                     <span class="toggletip-wrapper">
                         <div class="toggletip" data-manager="Toggletip">
@@ -2561,22 +2797,22 @@ data-spans__9__1
 
                 
                 <dt>Mean ± Std</dt>
-                <dd>2.84e+04 ±
-                    2.01e+04
+                <dd>2.93e+04 ±
+                    2.17e+04
                     
                 </dd>
                 
                 
                 <dt>Median ± IQR</dt>
-                <dd>2.47e+04 ±
-                    3.29e+04
+                <dd>2.43e+04 ±
+                    3.56e+04
                     
                 </dd>
 
                 <dt>Min | Max</dt>
                 <dd>
-                    <span class="min-value">12.0</span> |
-                    <span class="max-value">7.87e+04</span>
+                    <span class="min-value">6.00</span> |
+                    <span class="max-value">7.74e+04</span>
                     
                 </dd>
                 
@@ -2628,7 +2864,7 @@ data-spans__9__1
                 
                 <dt>Unique values</dt>
                 <dd>
-                    34 (&lt; 0.1%)
+                    33 (0.1%)
                     
                 </dd>
                 
@@ -2641,7 +2877,7 @@ data-spans__9__1
                 
                 <dt>Min | Max</dt>
                 <dd>
-                    <span class="min-value">2005-12-01T00:00:00</span> |
+                    <span class="min-value">2006-01-01T00:00:00</span> |
                     <span class="max-value">2008-09-01T00:00:00</span>
                     
                 </dd>
@@ -3020,31 +3256,31 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     </td>
                     <td class="elided">char</td>
                     <td>Int32</td>
-                    <td>False</td>
+                    <td>True</td>
                     <td class="ok" data-value="0" data-numeric>
                         0 (0.0%)
                     </td>
 
                     
-                    <td data-value="7855" data-numeric>
-                        7855 (5.4%)
+                    <td data-value="7704" data-numeric>
+                        7704 (32.2%)
                     </td>
                     
 
                     
-                    <td data-value="28362.336951385703" data-numeric>
-                        2.84e+04</td>
-                    <td data-value="20072.487156266743" data-numeric>
-                        2.01e+04</td>
+                    <td data-value="29293.0562437228" data-numeric>
+                        2.93e+04</td>
+                    <td data-value="21707.04931505244" data-numeric>
+                        2.17e+04</td>
                     
 
                     
-                    <td data-value="12.0" data-numeric>
-                        12.0</td>
-                    <td data-value="24655.0" data-numeric>
-                        2.47e+04</td>
-                    <td data-value="78719.0" data-numeric>
-                        7.87e+04</td>
+                    <td data-value="6.0" data-numeric>
+                        6.00</td>
+                    <td data-value="24281.0" data-numeric>
+                        2.43e+04</td>
+                    <td data-value="77435.0" data-numeric>
+                        7.74e+04</td>
                     
 
                 </tr>
@@ -3061,8 +3297,8 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     </td>
 
                     
-                    <td data-value="34" data-numeric>
-                        34 (&lt; 0.1%)
+                    <td data-value="33" data-numeric>
+                        33 (0.1%)
                     </td>
                     
 
@@ -3072,8 +3308,8 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     
 
                     
-                    <td data-value="2005-12-01T00:00:00" data-numeric>
-                        2005-12-01T00:00:00</td>
+                    <td data-value="2006-01-01T00:00:00" data-numeric>
+                        2006-01-01T00:00:00</td>
                     <td data-value="nan" data-numeric></td>
                     <td data-value="2008-09-01T00:00:00" data-numeric>
                         2008-09-01T00:00:00</td>
@@ -3109,7 +3345,7 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
         </div>
     </template>
 
-    <skrub-table-report class="report" id="report_8c8d8d22">
+    <skrub-table-report class="report" id="report_04ab4fb3">
     </skrub-table-report>
 
     <script type="module">
@@ -4213,7 +4449,7 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
     </script>
 </div>
 
-<div id="report_8c8d8d22-wrapper-fallback">
+<div id="report_04ab4fb3-wrapper-fallback">
     <h2>Please enable javascript</h2>
     <p>
         The skrub table reports need javascript to display correctly. If you are
@@ -4224,8 +4460,8 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
 </div>
 
 <script>
- document.getElementById("report_8c8d8d22-wrapper").removeAttribute("hidden");
- document.getElementById("report_8c8d8d22-wrapper-fallback").setAttribute("hidden", "");
+ document.getElementById("report_04ab4fb3-wrapper").removeAttribute("hidden");
+ document.getElementById("report_04ab4fb3-wrapper-fallback").setAttribute("hidden", "");
 </script>
                     </div>
                 </div>

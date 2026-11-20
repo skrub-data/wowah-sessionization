@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="en-US">
 
 <head>
     <meta charset="utf-8">
@@ -46,6 +46,18 @@ pre, code {
     transform: translateY(2px);
 }
 
+.graph-hint {
+    display: inline-block;
+    max-width: 100%;
+    margin: 0 0 0.75rem;
+    padding: 10px 12px;
+    border-left: 4px solid #6b9bd2;
+    border-radius: 3px;
+    background: #eef4fb;
+    color: #1f3b5c;
+    font-size: 0.95rem;
+}
+
 .data_op-node-wrapper {
     overflow-x: auto;
 }
@@ -68,8 +80,9 @@ pre, code {
 }
 
 .data_op-node > nav.main-nav {
-    border-right: 2px solid #ccc;
     flex-shrink: 0;
+    min-width: 8rem;
+    box-sizing: border-box;
 }
 
 .node-details {
@@ -77,22 +90,85 @@ pre, code {
     flex-shrink: 1;
 }
 
-.data_op-node > nav.main-nav {
-    resize: horizontal;
-    min-width: 8rem;
-    /* A wide graph scrolls rather than squeezing the node details. */
-    max-width: 75vw;
-    box-sizing: border-box;
-}
-
-.data_op-node > .node-frame {
-    flex-grow: 1;
-    flex-shrink: 1;
+/* Drawer displaying the selected node (or a source file) next to the graph. */
+.data_op-node > .drawer {
+    display: none;
+    flex-direction: column;
+    flex: 1 1 0;
     min-width: 0;
     padding: 0;
-    border: none;
+    overflow: hidden;
+}
+
+.drawer-open .data_op-node > .drawer {
+    display: flex;
+}
+
+/* The node page and the source page are stacked. The one not displayed is only
+   invisible, not display: none, so that the node page keeps its scroll position
+   and the source page can scroll to its highlighted line while it loads. The
+   keyboard does not reach an invisible iframe either. */
+.drawer-body {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.drawer-body > iframe {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
+    padding: 0;
+    border: none;
+}
+
+.drawer[data-mode="node"] #source-frame,
+.drawer[data-mode="source"] #node-frame {
+    visibility: hidden;
+}
+
+.drawer[data-mode="source"] #close-drawer,
+.drawer[data-mode="node"] #back-to-node {
+    display: none;
+}
+
+.drawer-toolbar {
+    display: flex;
+    flex: none;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border-bottom: 1px solid #ddd;
+    background: #fafafa;
+}
+
+.header-button,
+.drawer-toolbar button {
+    padding: 4px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.header-button:hover:not(:disabled),
+.drawer-toolbar button:hover {
+    background: #f0f0f0;
+}
+
+.header-button:disabled {
+    color: #999;
+    cursor: default;
+}
+
+.header-button:focus-visible,
+.drawer-toolbar button:focus-visible {
+    outline: 2px solid #6b9bd2;
+    outline-offset: 1px;
 }
 
 /* Node pages are displayed inside the iframe of the index page: they fill it
@@ -162,8 +238,8 @@ pre, code {
     margin-top: 2rem;
 }
 
-/* Layout of the index page: a header (toggle button and report title), below
-   it the graph and the iframe displaying the selected node. */
+/* Layout of the index page: a header with the title and graph toggle, below it
+   the graph and the drawer displaying the selected node. */
 .report-index {
     margin: 0;
     height: 100vh;
@@ -175,8 +251,10 @@ pre, code {
     flex: none;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #ddd;
+    background: #fafafa;
 }
 
 .report-index > .data_op-node-wrapper {
@@ -191,16 +269,155 @@ pre, code {
     min-height: 0;
 }
 
-.icon-button {
+.report-index .data_op-node > nav.main-nav {
+    flex: 1 1 auto;
+}
+
+/* The graph is not scrolled but panned and zoomed in a viewport filling the
+   panel (see data_ops-report.js). */
+.report-index .data_op-node > nav.main-nav[data-is-open] {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.graph-toolbar {
     flex: none;
-    padding: 2px;
-    width: 24px;
-    height: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.graph-toolbar .graph-hint {
+    margin: 0;
+}
+
+#graph-nav {
+    flex: 1 1 0;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #ddd;
+    cursor: grab;
+    /* we handle touch gestures */
+    touch-action: none;
+}
+
+#graph-nav.panning {
+    cursor: grabbing;
+}
+
+#graph-canvas {
+    width: max-content;
+    user-select: none;
+}
+
+#graph-canvas svg {
+    display: block;
+}
+
+.graph-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.graph-controls button {
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.5rem;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.95);
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.graph-controls button:hover {
+    background: #eef4fb;
+}
+
+/* When the drawer is open the graph and the drawer share the width; the
+   splitter between them sets the share (--graph-width, see data_ops-report.js). */
+.report-index.drawer-open .data_op-node > nav.main-nav {
+    flex: 0 0 auto;
+    width: var(--graph-width, 50%);
+}
+
+/* Draggable divider between the graph and the drawer. The whole line can be
+   dragged (it is wider than it looks, to be easy to grab), and the handle in
+   the middle shows that it can be. Only displayed when both panels are. */
+.data_op-node > .splitter {
+    display: none;
+    position: relative;
+    flex: none;
+    width: 16px;
+    padding: 0;
+    overflow: visible;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(#ccc, #ccc) center / 2px 100% no-repeat;
+    cursor: col-resize;
+    /* we handle touch gestures */
+    touch-action: none;
+}
+
+.drawer-open .data_op-node > nav.main-nav[data-is-open] + .splitter {
+    display: flex;
+}
+
+.splitter-handle {
+    width: 16px;
+    height: 64px;
+    border: 1px solid #888;
+    border-radius: 8px;
+    background:
+        radial-gradient(circle, #666 1.5px, transparent 2px) center / 6px 10px repeat-y,
+        #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+}
+
+.splitter:hover,
+.splitter.dragging {
+    background-image: linear-gradient(#6b9bd2, #6b9bd2);
+}
+
+.splitter:hover .splitter-handle,
+.splitter.dragging .splitter-handle {
+    border-color: #6b9bd2;
+}
+
+.splitter:focus-visible {
+    outline: 2px solid #6b9bd2;
+}
+
+/* While dragging, the pointer must not be captured by the iframes nor select
+   text. */
+.report-index.resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+.report-index.resizing iframe {
+    pointer-events: none;
+}
+
+.header-button {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    margin-left: auto;
 }
 
 .report-title {
+    flex: 0 1 auto;
     margin: 0;
     min-width: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -216,13 +433,32 @@ pre, code {
 }
     </style>
     <script>
- // Tell index.html (which displays this page in an iframe) which node is shown
- // (null when no particular node is).
- if (window.parent !== window) {
-     window.parent.postMessage(
-         {type: "skrub-report-node-shown", nodeId: 3}, "*");
- }
-</script>
+     // Included in node pages. When a node page is displayed in the drawer of
+// index.html (see data_ops-report.js), clicks on links to other nodes or to
+// source files are not followed here: we ask the index page to display them,
+// so that it stays in charge of what is shown (and of the browser's history).
+// Nothing happens when the page is opened on its own.
+(function () {
+    if (window.parent === window) {
+        return;
+    }
+    document.addEventListener("click", (event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey ||
+            event.shiftKey || event.altKey) {
+            return;
+        }
+        const link = event.target.closest('a[href^="node_"], a[href^="python/"]');
+        if (!link) {
+            return;
+        }
+        event.preventDefault();
+        // The target origin must be "*": for file:// URLs the origin is opaque,
+        // so it cannot be named.
+        window.parent.postMessage(
+            {type: "skrub-report-link", href: link.getAttribute("href")}, "*");
+    });
+})();
+    </script>
 </head>
 
 <body class="node-page">
@@ -246,7 +482,7 @@ pre, code {
                         </li>
                     </ul>
                 </nav>
-                <samp>ID:</samp> <samp>141500362571725309262213046646593195571</samp>
+                <samp>ID:</samp> <samp>320641538635248646558513473300594884816</samp>
                 
                 <h2><samp>Name: query</samp></h2>
                 
@@ -277,9 +513,9 @@ pre, code {
 
                 <div>
                     <h3>Where was this step created?</h3>
-                    <pre><code class="node-creation-stack">File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L414">/Users/rcap/work/wowah-sessionization/main.py, line 414</a>, in &lt;module&gt;
-<span class="node-creation-stack-line">results, data_op = evaluate(args.env, load_fraction=args.fraction)</span>File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L354">/Users/rcap/work/wowah-sessionization/main.py, line 354</a>, in evaluate
-<span class="node-creation-stack-line">data_op = make_data_op(load_fraction=load_fraction)</span>File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L275">/Users/rcap/work/wowah-sessionization/main.py, line 275</a>, in make_data_op
+                    <pre><code class="node-creation-stack">File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L470">/Users/rcap/work/wowah-sessionization/main.py, line 470</a>, in &lt;module&gt;
+<span class="node-creation-stack-line">results, data_op = evaluate(args.env, load_fraction=args.fraction)</span>File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L410">/Users/rcap/work/wowah-sessionization/main.py, line 410</a>, in evaluate
+<span class="node-creation-stack-line">data_op = make_data_op(load_fraction=load_fraction)</span>File <a href="python/efa1c22e62e33a59d040fffcaad48c26251e3ffc080694f8e04fa316acb71e12.html#L327">/Users/rcap/work/wowah-sessionization/main.py, line 327</a>, in make_data_op
 <span class="node-creation-stack-line">user_month_has_played = historical_data.skb.apply_func(</span></code></pre>
                 </div>
                 
@@ -287,7 +523,7 @@ pre, code {
                 
                 <div>
                     <h3>Computation time</h3>
-                    <code>0h 0m 0.12s</code>
+                    <code>0h 0m 2s</code>
                 </div>
                 
 
@@ -297,10 +533,32 @@ pre, code {
                     <h3>Function applied in this step:</h3>
                     <code>build_churn_dataset</code>
                     
-                    : <a href="python/ecf54fbb31c1d2431cbdf8796dfbec9cc8a87157950397c856cf14350d50d382.html#L181">source code</a>
+                    : <a href="python/ecf54fbb31c1d2431cbdf8796dfbec9cc8a87157950397c856cf14350d50d382.html#L164">source code</a>
                     
 
                     
+
+
+<details class="docstring-details">
+    <summary>
+        <strong>docstring:</strong>
+        <code>Build the (char, month) table with `has_played`, `prev_played`, `churn` and</code>
+    </summary>
+    <pre><code>Build the (char, month) table with `has_played`, `prev_played`, `churn` and
+the target `churn_next`.
+
+Rows whose target is unknown (the last observed month and the padding months
+after it) cannot be used to train or evaluate a model, so they are dropped.
+
+With `only_prev_active=True`, only the rows where the character played in the
+previous month are kept. Features for a row at month M are built from month
+M - 1, so a character that was already absent in M - 1 has no features and
+is not a prediction we could act on: the target then only contains
+characters that were active in M - 1 and are absent in both M and M + 1.
+Keep the default (all rows) when the full (char, month) grid is needed, for
+example to build lagged features, which need each character&#39;s full timeline.</code></pre>
+</details>
+
 
 
 
@@ -315,8 +573,8 @@ pre, code {
                     
                     <div>
                         
-<div id="report_a2b6c336-wrapper" hidden>
-    <template id="report_a2b6c336-template">
+<div id="report_e4184eb1-wrapper" hidden>
+    <template id="report_e4184eb1-template">
         <style>
          /*!
 Pure v3.0.0
@@ -1743,7 +2001,7 @@ button.tab[data-has-warning]:not(:hover):not([data-is-selected]) {
                 
                 
                 <th
-                id="c48dc85f"
+                id="892eea51"
                 class="table-cell elided-short clickable"
                 
                 data-role="column-name"
@@ -1773,7 +2031,7 @@ data-spans__-1__0
                 
                 
                 <th
-                id="4abfd55f"
+                id="cef666c8"
                 class="table-cell elided-short clickable"
                 
                 data-role="column-name"
@@ -1803,7 +2061,7 @@ data-spans__-1__1
                 
                 
                 <th
-                id="b4bebef4"
+                id="5c4cca04"
                 class="table-cell elided-short clickable"
                 
                 data-role="column-name"
@@ -1833,7 +2091,7 @@ data-spans__-1__2
                 
                 
                 <th
-                id="41a89907"
+                id="b8df9801"
                 class="table-cell elided-short clickable"
                 
                 data-role="column-name"
@@ -1863,7 +2121,7 @@ data-spans__-1__3
                 
                 
                 <th
-                id="235069cc"
+                id="f73e7f2a"
                 class="table-cell elided-short clickable"
                 
                 data-role="column-name"
@@ -1893,7 +2151,7 @@ data-spans__-1__4
                 
                 
                 <th
-                id="a154c53c"
+                id="da4aee86"
                 class="table-cell elided-short clickable"
                 
                 data-role="column-name"
@@ -1923,7 +2181,7 @@ data-spans__-1__5
                 
                 
                 <th
-                id="43b94662"
+                id="61c77ca8"
                 class="table-cell elided-short clickable"
                 
                 data-role="column-name"
@@ -1963,7 +2221,7 @@ data-spans__-1__6
                 
                 
                 <td
-                id="1c001a43"
+                id="977f4245"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -1984,16 +2242,16 @@ data-spans__0__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="12274"
-                data-value-str="12274"
+                data-value-repr="6"
+                data-value-str="6"
                 
                 data-column-idx="0"
                 
-                >12,274</td>
+                >6</td>
                 
                 
                 <td
-                id="caa48b7b"
+                id="92aac255"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2014,16 +2272,16 @@ data-spans__0__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 4, 1, 0, 0)"
-                data-value-str="2006-04-01 00:00:00"
+                data-value-repr="datetime.datetime(2006, 1, 1, 0, 0)"
+                data-value-str="2006-01-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2006-04-01 00:00:00</td>
+                >2006-01-01 00:00:00</td>
                 
                 
                 <td
-                id="471201a6"
+                id="d7ffeb5d"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2053,7 +2311,7 @@ data-spans__0__2
                 
                 
                 <td
-                id="943d3771"
+                id="2cdec996"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2074,16 +2332,16 @@ data-spans__0__3
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="3"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="fc55b150"
+                id="b2f45144"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2113,7 +2371,7 @@ data-spans__0__4
                 
                 
                 <td
-                id="1cbb3b34"
+                id="25d05302"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2143,7 +2401,7 @@ data-spans__0__5
                 
                 
                 <td
-                id="3a7ead93"
+                id="a6b9d8b4"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2164,12 +2422,12 @@ data-spans__0__6
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 4, 1, 0, 0)"
-                data-value-str="2006-04-01 00:00:00"
+                data-value-repr="datetime.datetime(2005, 12, 1, 0, 0)"
+                data-value-str="2005-12-01 00:00:00"
                 
                 data-column-idx="6"
                 
-                >2006-04-01 00:00:00</td>
+                >2005-12-01 00:00:00</td>
                 
             </tr>
             
@@ -2177,7 +2435,7 @@ data-spans__0__6
                 
                 
                 <td
-                id="9fb549b1"
+                id="9c5208d1"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2198,16 +2456,16 @@ data-spans__1__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="12274"
-                data-value-str="12274"
+                data-value-repr="6"
+                data-value-str="6"
                 
                 data-column-idx="0"
                 
-                >12,274</td>
+                >6</td>
                 
                 
                 <td
-                id="25d267c0"
+                id="27a2a9a8"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2228,16 +2486,16 @@ data-spans__1__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 5, 1, 0, 0)"
-                data-value-str="2006-05-01 00:00:00"
+                data-value-repr="datetime.datetime(2006, 2, 1, 0, 0)"
+                data-value-str="2006-02-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2006-05-01 00:00:00</td>
+                >2006-02-01 00:00:00</td>
                 
                 
                 <td
-                id="5835402e"
+                id="ce1546ec"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2258,16 +2516,16 @@ data-spans__1__2
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="2"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="2356ae4b"
+                id="2d5be347"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2297,7 +2555,7 @@ data-spans__1__3
                 
                 
                 <td
-                id="8d2a776b"
+                id="631e6c64"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2327,7 +2585,7 @@ data-spans__1__4
                 
                 
                 <td
-                id="d2083f25"
+                id="ee4b1dd3"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2348,16 +2606,16 @@ data-spans__1__5
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="5"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="8fc44265"
+                id="877c1e45"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2378,12 +2636,12 @@ data-spans__1__6
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 4, 1, 0, 0)"
-                data-value-str="2006-04-01 00:00:00"
+                data-value-repr="datetime.datetime(2005, 12, 1, 0, 0)"
+                data-value-str="2005-12-01 00:00:00"
                 
                 data-column-idx="6"
                 
-                >2006-04-01 00:00:00</td>
+                >2005-12-01 00:00:00</td>
                 
             </tr>
             
@@ -2391,7 +2649,7 @@ data-spans__1__6
                 
                 
                 <td
-                id="13dbebb5"
+                id="8e1872a7"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2412,16 +2670,16 @@ data-spans__2__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="12274"
-                data-value-str="12274"
+                data-value-repr="6"
+                data-value-str="6"
                 
                 data-column-idx="0"
                 
-                >12,274</td>
+                >6</td>
                 
                 
                 <td
-                id="702cf29a"
+                id="6dee51d2"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2442,16 +2700,16 @@ data-spans__2__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 6, 1, 0, 0)"
-                data-value-str="2006-06-01 00:00:00"
+                data-value-repr="datetime.datetime(2006, 3, 1, 0, 0)"
+                data-value-str="2006-03-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2006-06-01 00:00:00</td>
+                >2006-03-01 00:00:00</td>
                 
                 
                 <td
-                id="cd669d3b"
+                id="f5847d00"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2472,16 +2730,16 @@ data-spans__2__2
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="2"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="6a1290a2"
+                id="c06c4442"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2502,16 +2760,16 @@ data-spans__2__3
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="3"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="069e443c"
+                id="b7adafd3"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2532,16 +2790,16 @@ data-spans__2__4
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="4"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="a785ac7d"
+                id="399bba2f"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2562,16 +2820,16 @@ data-spans__2__5
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="5"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="d7d1ab3b"
+                id="1d530c6b"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2592,12 +2850,12 @@ data-spans__2__6
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 4, 1, 0, 0)"
-                data-value-str="2006-04-01 00:00:00"
+                data-value-repr="datetime.datetime(2005, 12, 1, 0, 0)"
+                data-value-str="2005-12-01 00:00:00"
                 
                 data-column-idx="6"
                 
-                >2006-04-01 00:00:00</td>
+                >2005-12-01 00:00:00</td>
                 
             </tr>
             
@@ -2605,7 +2863,7 @@ data-spans__2__6
                 
                 
                 <td
-                id="c6d54ac3"
+                id="45b7636a"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2626,16 +2884,16 @@ data-spans__3__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="12274"
-                data-value-str="12274"
+                data-value-repr="6"
+                data-value-str="6"
                 
                 data-column-idx="0"
                 
-                >12,274</td>
+                >6</td>
                 
                 
                 <td
-                id="dd8be12e"
+                id="9010e096"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2656,16 +2914,16 @@ data-spans__3__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 7, 1, 0, 0)"
-                data-value-str="2006-07-01 00:00:00"
+                data-value-repr="datetime.datetime(2006, 4, 1, 0, 0)"
+                data-value-str="2006-04-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2006-07-01 00:00:00</td>
+                >2006-04-01 00:00:00</td>
                 
                 
                 <td
-                id="589b8249"
+                id="85d84317"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2686,16 +2944,16 @@ data-spans__3__2
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="2"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="01bfad86"
+                id="cbf2e100"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2716,16 +2974,16 @@ data-spans__3__3
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="3"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="73c0ef81"
+                id="950c9eea"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2746,16 +3004,16 @@ data-spans__3__4
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="4"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="b498c581"
+                id="9bb7c452"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2776,16 +3034,16 @@ data-spans__3__5
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="5"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="60d7649e"
+                id="449fa814"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2806,12 +3064,12 @@ data-spans__3__6
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 4, 1, 0, 0)"
-                data-value-str="2006-04-01 00:00:00"
+                data-value-repr="datetime.datetime(2005, 12, 1, 0, 0)"
+                data-value-str="2005-12-01 00:00:00"
                 
                 data-column-idx="6"
                 
-                >2006-04-01 00:00:00</td>
+                >2005-12-01 00:00:00</td>
                 
             </tr>
             
@@ -2819,7 +3077,7 @@ data-spans__3__6
                 
                 
                 <td
-                id="2aa9c881"
+                id="35734425"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2840,16 +3098,16 @@ data-spans__4__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="12274"
-                data-value-str="12274"
+                data-value-repr="6"
+                data-value-str="6"
                 
                 data-column-idx="0"
                 
-                >12,274</td>
+                >6</td>
                 
                 
                 <td
-                id="2f944980"
+                id="e633cc3c"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2870,16 +3128,16 @@ data-spans__4__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 8, 1, 0, 0)"
-                data-value-str="2006-08-01 00:00:00"
+                data-value-repr="datetime.datetime(2006, 5, 1, 0, 0)"
+                data-value-str="2006-05-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2006-08-01 00:00:00</td>
+                >2006-05-01 00:00:00</td>
                 
                 
                 <td
-                id="393aedff"
+                id="d276e6bf"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2900,16 +3158,16 @@ data-spans__4__2
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="2"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="4e99ea49"
+                id="0d0db003"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2930,16 +3188,16 @@ data-spans__4__3
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="3"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="9772510a"
+                id="3c050f91"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2960,16 +3218,16 @@ data-spans__4__4
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="4"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="88bbb61a"
+                id="a9f3af60"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -2990,16 +3248,16 @@ data-spans__4__5
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="5"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="7fa616cc"
+                id="cb1f5c10"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3020,12 +3278,12 @@ data-spans__4__6
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2006, 4, 1, 0, 0)"
-                data-value-str="2006-04-01 00:00:00"
+                data-value-repr="datetime.datetime(2005, 12, 1, 0, 0)"
+                data-value-str="2005-12-01 00:00:00"
                 
                 data-column-idx="6"
                 
-                >2006-04-01 00:00:00</td>
+                >2005-12-01 00:00:00</td>
                 
             </tr>
             
@@ -3117,7 +3375,7 @@ data-spans__4__6
                 
                 
                 <td
-                id="d5f5db74"
+                id="cd8e9f2e"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3138,16 +3396,16 @@ data-spans__5__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="60063"
-                data-value-str="60063"
+                data-value-repr="77408"
+                data-value-str="77408"
                 
                 data-column-idx="0"
                 
-                >60,063</td>
+                >77,408</td>
                 
                 
                 <td
-                id="64ad4912"
+                id="0555c211"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3168,16 +3426,16 @@ data-spans__5__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2008, 5, 1, 0, 0)"
-                data-value-str="2008-05-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 9, 1, 0, 0)"
+                data-value-str="2008-09-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2008-05-01 00:00:00</td>
+                >2008-09-01 00:00:00</td>
                 
                 
                 <td
-                id="51f69daf"
+                id="8990c413"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3207,7 +3465,7 @@ data-spans__5__2
                 
                 
                 <td
-                id="e71412d6"
+                id="f66f4079"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3228,16 +3486,16 @@ data-spans__5__3
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="3"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="75d58c78"
+                id="5634de5a"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3258,16 +3516,16 @@ data-spans__5__4
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="4"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="1f414cb7"
+                id="77196d1d"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3297,7 +3555,7 @@ data-spans__5__5
                 
                 
                 <td
-                id="902fad01"
+                id="aca5ed44"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3318,12 +3576,12 @@ data-spans__5__6
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2007, 10, 1, 0, 0)"
-                data-value-str="2007-10-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 8, 1, 0, 0)"
+                data-value-str="2008-08-01 00:00:00"
                 
                 data-column-idx="6"
                 
-                >2007-10-01 00:00:00</td>
+                >2008-08-01 00:00:00</td>
                 
             </tr>
             
@@ -3331,7 +3589,7 @@ data-spans__5__6
                 
                 
                 <td
-                id="72eb3cc4"
+                id="17622357"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3352,16 +3610,16 @@ data-spans__6__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="60063"
-                data-value-str="60063"
+                data-value-repr="77409"
+                data-value-str="77409"
                 
                 data-column-idx="0"
                 
-                >60,063</td>
+                >77,409</td>
                 
                 
                 <td
-                id="29380ffd"
+                id="01422f14"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3382,16 +3640,16 @@ data-spans__6__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2008, 6, 1, 0, 0)"
-                data-value-str="2008-06-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 9, 1, 0, 0)"
+                data-value-str="2008-09-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2008-06-01 00:00:00</td>
+                >2008-09-01 00:00:00</td>
                 
                 
                 <td
-                id="4a3a5c69"
+                id="58f6fdec"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3421,7 +3679,7 @@ data-spans__6__2
                 
                 
                 <td
-                id="92107f90"
+                id="e4da4e65"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3442,16 +3700,16 @@ data-spans__6__3
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="3"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="49c450d9"
+                id="0715d8f9"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3472,16 +3730,16 @@ data-spans__6__4
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="4"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="5e4f8345"
+                id="1f44ea7d"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3511,7 +3769,7 @@ data-spans__6__5
                 
                 
                 <td
-                id="4952ffde"
+                id="730001e1"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3532,12 +3790,12 @@ data-spans__6__6
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2007, 10, 1, 0, 0)"
-                data-value-str="2007-10-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 8, 1, 0, 0)"
+                data-value-str="2008-08-01 00:00:00"
                 
                 data-column-idx="6"
                 
-                >2007-10-01 00:00:00</td>
+                >2008-08-01 00:00:00</td>
                 
             </tr>
             
@@ -3545,7 +3803,7 @@ data-spans__6__6
                 
                 
                 <td
-                id="260986c3"
+                id="6d7e13ae"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3566,16 +3824,16 @@ data-spans__7__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="60063"
-                data-value-str="60063"
+                data-value-repr="77419"
+                data-value-str="77419"
                 
                 data-column-idx="0"
                 
-                >60,063</td>
+                >77,419</td>
                 
                 
                 <td
-                id="94f83ae6"
+                id="a12ceb80"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3596,16 +3854,16 @@ data-spans__7__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2008, 7, 1, 0, 0)"
-                data-value-str="2008-07-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 9, 1, 0, 0)"
+                data-value-str="2008-09-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2008-07-01 00:00:00</td>
+                >2008-09-01 00:00:00</td>
                 
                 
                 <td
-                id="9182c460"
+                id="c968f595"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3635,7 +3893,7 @@ data-spans__7__2
                 
                 
                 <td
-                id="8912d65c"
+                id="cfe4f314"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3656,16 +3914,16 @@ data-spans__7__3
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="3"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="e3363b28"
+                id="fad153e3"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3686,16 +3944,16 @@ data-spans__7__4
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="4"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="4cc9c41d"
+                id="9cc901a5"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3725,7 +3983,7 @@ data-spans__7__5
                 
                 
                 <td
-                id="ab04857a"
+                id="7d077ce1"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3746,12 +4004,12 @@ data-spans__7__6
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2007, 10, 1, 0, 0)"
-                data-value-str="2007-10-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 8, 1, 0, 0)"
+                data-value-str="2008-08-01 00:00:00"
                 
                 data-column-idx="6"
                 
-                >2007-10-01 00:00:00</td>
+                >2008-08-01 00:00:00</td>
                 
             </tr>
             
@@ -3759,7 +4017,7 @@ data-spans__7__6
                 
                 
                 <td
-                id="fc3897f6"
+                id="f6746a95"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3780,16 +4038,16 @@ data-spans__8__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="60063"
-                data-value-str="60063"
+                data-value-repr="77433"
+                data-value-str="77433"
                 
                 data-column-idx="0"
                 
-                >60,063</td>
+                >77,433</td>
                 
                 
                 <td
-                id="b7bbab0f"
+                id="cda475e6"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3810,16 +4068,16 @@ data-spans__8__1
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2008, 8, 1, 0, 0)"
-                data-value-str="2008-08-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 9, 1, 0, 0)"
+                data-value-str="2008-09-01 00:00:00"
                 
                 data-column-idx="1"
                 
-                >2008-08-01 00:00:00</td>
+                >2008-09-01 00:00:00</td>
                 
                 
                 <td
-                id="19f96227"
+                id="7531b424"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3849,7 +4107,7 @@ data-spans__8__2
                 
                 
                 <td
-                id="921dcc68"
+                id="d3706541"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3870,16 +4128,16 @@ data-spans__8__3
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="3"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="e93b5780"
+                id="943944c9"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3900,16 +4158,16 @@ data-spans__8__4
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="4"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="8175c565"
+                id="40ac62b2"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3939,7 +4197,7 @@ data-spans__8__5
                 
                 
                 <td
-                id="037af7a0"
+                id="26551bac"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3960,12 +4218,12 @@ data-spans__8__6
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2007, 10, 1, 0, 0)"
-                data-value-str="2007-10-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 8, 1, 0, 0)"
+                data-value-str="2008-08-01 00:00:00"
                 
                 data-column-idx="6"
                 
-                >2007-10-01 00:00:00</td>
+                >2008-08-01 00:00:00</td>
                 
             </tr>
             
@@ -3973,7 +4231,7 @@ data-spans__8__6
                 
                 
                 <td
-                id="f72117bf"
+                id="b4cf76be"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -3994,16 +4252,16 @@ data-spans__9__0
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="60063"
-                data-value-str="60063"
+                data-value-repr="77435"
+                data-value-str="77435"
                 
                 data-column-idx="0"
                 
-                >60,063</td>
+                >77,435</td>
                 
                 
                 <td
-                id="6cdbf583"
+                id="f0a4a019"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -4033,7 +4291,7 @@ data-spans__9__1
                 
                 
                 <td
-                id="42f70457"
+                id="cbbbfc56"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -4054,16 +4312,16 @@ data-spans__9__2
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="2"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="b917aec6"
+                id="160e496b"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -4084,16 +4342,16 @@ data-spans__9__3
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="False"
-                data-value-str="False"
+                data-value-repr="True"
+                data-value-str="True"
                 
                 data-column-idx="3"
                 
-                >False</td>
+                >True</td>
                 
                 
                 <td
-                id="281822d5"
+                id="7ea9d951"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -4114,16 +4372,16 @@ data-spans__9__4
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="4"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="b78d17d9"
+                id="731dd772"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -4144,16 +4402,16 @@ data-spans__9__5
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="True"
-                data-value-str="True"
+                data-value-repr="False"
+                data-value-str="False"
                 
                 data-column-idx="5"
                 
-                >True</td>
+                >False</td>
                 
                 
                 <td
-                id="700d6fe0"
+                id="97187431"
                 class="table-cell elided-short clickable"
                 
                 data-role="dataframe-data"
@@ -4174,12 +4432,12 @@ data-spans__9__6
 
                 rowspan="1"
                 colspan="1"
-                data-value-repr="datetime.datetime(2007, 10, 1, 0, 0)"
-                data-value-str="2007-10-01 00:00:00"
+                data-value-repr="datetime.datetime(2008, 8, 1, 0, 0)"
+                data-value-str="2008-08-01 00:00:00"
                 
                 data-column-idx="6"
                 
-                >2007-10-01 00:00:00</td>
+                >2008-08-01 00:00:00</td>
                 
             </tr>
             
@@ -4191,7 +4449,7 @@ data-spans__9__6
 
     <div class="table-footer">
     <div>
-        <strong>146,027</strong> rows ✕
+        <strong>23,896</strong> rows ✕
         <strong data-manager="ColumnFilterMatchCount"
             data-test="n-columns-display">7</strong> columns
         
@@ -4260,7 +4518,7 @@ data-spans__9__6
                 
                 <dt>Unique values</dt>
                 <dd>
-                    7,855 (5.4%)
+                    7,704 (32.2%)
                     
                     <span class="toggletip-wrapper">
                         <div class="toggletip" data-manager="Toggletip">
@@ -4279,22 +4537,22 @@ data-spans__9__6
 
                 
                 <dt>Mean ± Std</dt>
-                <dd>2.84e+04 ±
-                    2.01e+04
+                <dd>2.93e+04 ±
+                    2.17e+04
                     
                 </dd>
                 
                 
                 <dt>Median ± IQR</dt>
-                <dd>2.47e+04 ±
-                    3.29e+04
+                <dd>2.43e+04 ±
+                    3.56e+04
                     
                 </dd>
 
                 <dt>Min | Max</dt>
                 <dd>
-                    <span class="min-value">12.0</span> |
-                    <span class="max-value">7.87e+04</span>
+                    <span class="min-value">6.00</span> |
+                    <span class="max-value">7.74e+04</span>
                     
                 </dd>
                 
@@ -4346,7 +4604,7 @@ data-spans__9__6
                 
                 <dt>Unique values</dt>
                 <dd>
-                    34 (&lt; 0.1%)
+                    33 (0.1%)
                     
                 </dd>
                 
@@ -4359,7 +4617,7 @@ data-spans__9__6
                 
                 <dt>Min | Max</dt>
                 <dd>
-                    <span class="min-value">2005-12-01T00:00:00</span> |
+                    <span class="min-value">2006-01-01T00:00:00</span> |
                     <span class="max-value">2008-09-01T00:00:00</span>
                     
                 </dd>
@@ -4423,7 +4681,7 @@ data-spans__9__6
 
                 
                 <dt>Mean</dt>
-                <dd>0.170 </dd>
+                <dd>0.570 </dd>
                 
                 
                 
@@ -4448,7 +4706,7 @@ data-spans__9__6
      
      
     data-manager="FilterableColumn SampleColumnSummary"
-    
+     data-constant-column 
      data-role="sample-column" data-hidden >
     <div class="card-header">
         <h3>
@@ -4471,29 +4729,38 @@ data-spans__9__6
                 <dt>Null values</dt>
                <dd class="ok">0 (0.0%)</dd>
                 
-                
-                <dt>Unique values</dt>
-                <dd>
-                    2 (&lt; 0.1%)
-                    
-                </dd>
-                
-
-                
-                
-                
-
-                
-                <dt>Mean</dt>
-                <dd>0.165 </dd>
-                
-                
-                
 
                 
             </dl>
         </div>
 
+        
+        
+        <div class="margin-v-m">
+            <strong>Constant value:</strong>
+            <div class="copybutton-grid">
+                <div class="box">
+                    <pre id="col_3_in_sample_tab-constant-value"
+                        data-copy-text="True">True</pre>
+                    
+<button
+    class="copybutton copybutton-left"
+    data-manager="CopyButton"
+    type="button"
+    aria-label="Copy to clipboard"
+    data-target-id="col_3_in_sample_tab-constant-value">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16">
+  <path fill-rule="evenodd" d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1z"/>
+</svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16">
+  <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"/>
+</svg>
+    <div class="copied-message">Copied!</div>
+</button>
+
+                </div>
+            </div>
+        </div>
         
 
         
@@ -4510,7 +4777,7 @@ data-spans__9__6
      
      
     data-manager="FilterableColumn SampleColumnSummary"
-    
+     data-constant-column 
      data-role="sample-column" data-hidden >
     <div class="card-header">
         <h3>
@@ -4533,29 +4800,38 @@ data-spans__9__6
                 <dt>Null values</dt>
                <dd class="ok">0 (0.0%)</dd>
                 
-                
-                <dt>Unique values</dt>
-                <dd>
-                    2 (&lt; 0.1%)
-                    
-                </dd>
-                
-
-                
-                
-                
-
-                
-                <dt>Mean</dt>
-                <dd>0.759 </dd>
-                
-                
-                
 
                 
             </dl>
         </div>
 
+        
+        
+        <div class="margin-v-m">
+            <strong>Constant value:</strong>
+            <div class="copybutton-grid">
+                <div class="box">
+                    <pre id="col_4_in_sample_tab-constant-value"
+                        data-copy-text="False">False</pre>
+                    
+<button
+    class="copybutton copybutton-left"
+    data-manager="CopyButton"
+    type="button"
+    aria-label="Copy to clipboard"
+    data-target-id="col_4_in_sample_tab-constant-value">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16">
+  <path fill-rule="evenodd" d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1z"/>
+</svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16">
+  <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"/>
+</svg>
+    <div class="copied-message">Copied!</div>
+</button>
+
+                </div>
+            </div>
+        </div>
         
 
         
@@ -4609,7 +4885,7 @@ data-spans__9__6
 
                 
                 <dt>Mean</dt>
-                <dd>0.806 </dd>
+                <dd>0.376 </dd>
                 
                 
                 
@@ -4660,7 +4936,7 @@ data-spans__9__6
                 
                 <dt>Unique values</dt>
                 <dd>
-                    34 (&lt; 0.1%)
+                    33 (0.1%)
                     
                 </dd>
                 
@@ -4674,7 +4950,7 @@ data-spans__9__6
                 <dt>Min | Max</dt>
                 <dd>
                     <span class="min-value">2005-12-01T00:00:00</span> |
-                    <span class="max-value">2008-09-01T00:00:00</span>
+                    <span class="max-value">2008-08-01T00:00:00</span>
                     
                 </dd>
                 
@@ -5052,31 +5328,31 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     </td>
                     <td class="elided">char</td>
                     <td>Int32</td>
-                    <td>False</td>
+                    <td>True</td>
                     <td class="ok" data-value="0" data-numeric>
                         0 (0.0%)
                     </td>
 
                     
-                    <td data-value="7855" data-numeric>
-                        7855 (5.4%)
+                    <td data-value="7704" data-numeric>
+                        7704 (32.2%)
                     </td>
                     
 
                     
-                    <td data-value="28362.336951385703" data-numeric>
-                        2.84e+04</td>
-                    <td data-value="20072.487156266743" data-numeric>
-                        2.01e+04</td>
+                    <td data-value="29293.0562437228" data-numeric>
+                        2.93e+04</td>
+                    <td data-value="21707.04931505244" data-numeric>
+                        2.17e+04</td>
                     
 
                     
-                    <td data-value="12.0" data-numeric>
-                        12.0</td>
-                    <td data-value="24655.0" data-numeric>
-                        2.47e+04</td>
-                    <td data-value="78719.0" data-numeric>
-                        7.87e+04</td>
+                    <td data-value="6.0" data-numeric>
+                        6.00</td>
+                    <td data-value="24281.0" data-numeric>
+                        2.43e+04</td>
+                    <td data-value="77435.0" data-numeric>
+                        7.74e+04</td>
                     
 
                 </tr>
@@ -5093,8 +5369,8 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     </td>
 
                     
-                    <td data-value="34" data-numeric>
-                        34 (&lt; 0.1%)
+                    <td data-value="33" data-numeric>
+                        33 (0.1%)
                     </td>
                     
 
@@ -5104,8 +5380,8 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     
 
                     
-                    <td data-value="2005-12-01T00:00:00" data-numeric>
-                        2005-12-01T00:00:00</td>
+                    <td data-value="2006-01-01T00:00:00" data-numeric>
+                        2006-01-01T00:00:00</td>
                     <td data-value="nan" data-numeric></td>
                     <td data-value="2008-09-01T00:00:00" data-numeric>
                         2008-09-01T00:00:00</td>
@@ -5131,8 +5407,8 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     
 
                     
-                    <td data-value="0.17044793086210083" data-numeric>
-                        0.170</td>
+                    <td data-value="0.5700535654502845" data-numeric>
+                        0.570</td>
                     <td data-value="" data-numeric>
                         </td>
                     
@@ -5151,20 +5427,20 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     </td>
                     <td class="elided">prev_played</td>
                     <td>Boolean</td>
-                    <td>False</td>
+                    <td>True</td>
                     <td class="ok" data-value="0" data-numeric>
                         0 (0.0%)
                     </td>
 
                     
-                    <td data-value="2" data-numeric>
-                        2 (&lt; 0.1%)
+                    <td data-value="1" data-numeric>
+                        1 (&lt; 0.1%)
                     </td>
                     
 
                     
-                    <td data-value="0.16540091900812864" data-numeric>
-                        0.165</td>
+                    <td data-value="1.0" data-numeric>
+                        1.00</td>
                     <td data-value="" data-numeric>
                         </td>
                     
@@ -5183,20 +5459,20 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     </td>
                     <td class="elided">churn</td>
                     <td>Boolean</td>
-                    <td>False</td>
+                    <td>True</td>
                     <td class="ok" data-value="0" data-numeric>
                         0 (0.0%)
                     </td>
 
                     
-                    <td data-value="2" data-numeric>
-                        2 (&lt; 0.1%)
+                    <td data-value="1" data-numeric>
+                        1 (&lt; 0.1%)
                     </td>
                     
 
                     
-                    <td data-value="0.7585446527012127" data-numeric>
-                        0.759</td>
+                    <td data-value="0.0" data-numeric>
+                        0.00</td>
                     <td data-value="" data-numeric>
                         </td>
                     
@@ -5227,8 +5503,8 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     
 
                     
-                    <td data-value="0.8061385908085491" data-numeric>
-                        0.806</td>
+                    <td data-value="0.3760043521928356" data-numeric>
+                        0.376</td>
                     <td data-value="" data-numeric>
                         </td>
                     
@@ -5247,14 +5523,14 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     </td>
                     <td class="elided">first_month</td>
                     <td>Datetime</td>
-                    <td>False</td>
+                    <td>True</td>
                     <td class="ok" data-value="0" data-numeric>
                         0 (0.0%)
                     </td>
 
                     
-                    <td data-value="34" data-numeric>
-                        34 (&lt; 0.1%)
+                    <td data-value="33" data-numeric>
+                        33 (0.1%)
                     </td>
                     
 
@@ -5267,8 +5543,8 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
                     <td data-value="2005-12-01T00:00:00" data-numeric>
                         2005-12-01T00:00:00</td>
                     <td data-value="nan" data-numeric></td>
-                    <td data-value="2008-09-01T00:00:00" data-numeric>
-                        2008-09-01T00:00:00</td>
+                    <td data-value="2008-08-01T00:00:00" data-numeric>
+                        2008-08-01T00:00:00</td>
                     
 
                 </tr>
@@ -5301,7 +5577,7 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
         </div>
     </template>
 
-    <skrub-table-report class="report" id="report_a2b6c336">
+    <skrub-table-report class="report" id="report_e4184eb1">
     </skrub-table-report>
 
     <script type="module">
@@ -6405,7 +6681,7 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
     </script>
 </div>
 
-<div id="report_a2b6c336-wrapper-fallback">
+<div id="report_e4184eb1-wrapper-fallback">
     <h2>Please enable javascript</h2>
     <p>
         The skrub table reports need javascript to display correctly. If you are
@@ -6416,8 +6692,8 @@ No columns match the selected filter: <strong data-manager="ColumnFilterName"></
 </div>
 
 <script>
- document.getElementById("report_a2b6c336-wrapper").removeAttribute("hidden");
- document.getElementById("report_a2b6c336-wrapper-fallback").setAttribute("hidden", "");
+ document.getElementById("report_e4184eb1-wrapper").removeAttribute("hidden");
+ document.getElementById("report_e4184eb1-wrapper-fallback").setAttribute("hidden", "");
 </script>
                     </div>
                 </div>
