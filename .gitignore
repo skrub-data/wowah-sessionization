@@ -25,3 +25,8 @@ _freeze/
 
 # Cached intermediate tables used to redraw the exploration figures
 /reports/exploration/cache/
+
+# skrub DataOp cache (see CACHE_DIR in main.py). Regenerated on demand; the
+# parse node is expensive so the cache is kept between runs, but it is never
+# committed.
+.skrub_cache/

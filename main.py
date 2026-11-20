@@ -11,7 +11,10 @@ we only use data from previous months.
 """
 
 # %%
+import hashlib
+import sys
 from datetime import datetime
+from pathlib import Path
 
 import polars as pl
 import skrub
@@ -42,6 +45,50 @@ MAX_DATE = datetime.strptime("2008-10-01", "%Y-%m-%d")
 # allows the same graph to be fitted on one set of raw files, and later run
 # on another set of raw files.
 RAW_DATA_ROOT = "data/raw/WoWAH"
+
+# skrub's DataOp cache. Parsing the raw logs is a node of the plan, and
+# cross-validation re-evaluates the plan once per fold: without a cache the
+# same 132k files are parsed twice per split (once to fit, once to score),
+# which is ~73% of the total runtime. With the cache on, the parse node runs
+# once and every later fold reuses its output.
+#
+# The cache lives inside the repository so it is easy to find and delete, and
+# is git-ignored.
+CACHE_DIR = Path(__file__).parent / ".skrub_cache"
+skrub.set_config(cache=str(CACHE_DIR))
+
+
+def _source_fingerprint(*modules):
+    """
+    Hash the source of the modules a cached node depends on.
+
+    joblib keys a cached call on the *cached function's own source* plus its
+    arguments. It does not look at the functions that function calls, so
+    editing `parse_files` or `adding_features` would silently keep serving
+    stale results. Passing this fingerprint as an argument of the cached
+    functions puts their dependencies back into the key.
+    """
+    digest = hashlib.sha256()
+    for module in modules:
+        digest.update(Path(module.__file__).read_bytes())
+    return digest.hexdigest()[:16]
+
+
+# The two expensive nodes are fingerprinted separately so that editing the
+# feature code does not throw away the (much more expensive) parsed logs.
+# `main.py` is included in the feature fingerprint because `build_feature_table`
+# calls helpers defined in this module, and joblib only hashes the source of the
+# function it caches, not of the functions that function calls.
+PARSE_FINGERPRINT = _source_fingerprint(
+    sys.modules["src.parse_to_single_table"],
+    sys.modules["src.utils"],
+)
+FEATURES_FINGERPRINT = _source_fingerprint(
+    sys.modules[__name__],
+    sys.modules["add_churn"],
+    sys.modules["adding_features"],
+)
+
 
 # "historical" is used to fit the pipeline: every raw file up to and
 # including October 2008, matching the MIN_DATE/MAX_DATE window the
@@ -130,6 +177,7 @@ def build_feature_table(
     add_gini=False,
     interval="1mo",
     lags=(1, 2),
+    _fingerprint=None,
 ):
     """
     Build the feature table for every (char, month) pair.
@@ -142,7 +190,11 @@ def build_feature_table(
     features need each character's full monthly timeline: a CV fold's X may
     contain a single month (e.g. the test fold), which would otherwise leave
     every lag/diff column null.
+
+    `_fingerprint` is unused; it only exists so that the cache key changes when
+    the code this function calls into changes (see `FEATURES_FINGERPRINT`).
     """
+    del _fingerprint
     features_by_month = []
 
     # Create a session encoder. The gap is a hyperparameter that can be tuned.
@@ -243,8 +295,14 @@ def add_features(X, feature_table):
     )
 
 
-def load(file_paths, fraction=0.1):
-    """Parse the given raw ".txt" log files, then subsample by character."""
+def load(file_paths, fraction=0.1, _fingerprint=None):
+    """
+    Parse the given raw ".txt" log files, then subsample by character.
+
+    `_fingerprint` is unused; it only exists so that the cache key changes when
+    the parsing code changes (see `PARSE_FINGERPRINT`).
+    """
+    del _fingerprint
     df = parse_files(file_paths)
     if fraction == 1:
         return df.lazy()
@@ -260,7 +318,9 @@ def make_data_op(load_fraction=0.1, return_x=False):
     # same code path parses whichever files the "raw_files" environment
     # variable points to, whether that's the historical training set or a
     # held-out, never-before-seen set of files.
-    historical_data = raw_files.skb.apply_func(load, fraction=load_fraction)
+    historical_data = raw_files.skb.apply_func(
+        load, fraction=load_fraction, _fingerprint=PARSE_FINGERPRINT
+    )
     # In the original data, "guild == -1" means "no guild", so I'm replacing -1
     # with nulls.
     historical_data = historical_data.with_columns(
@@ -297,6 +357,7 @@ def make_data_op(load_fraction=0.1, return_x=False):
         # columns, and it costs 1.4s of the 1.6s location block.
         add_gini=False,
         lags=lags,
+        _fingerprint=FEATURES_FINGERPRINT,
     )
     all_features = X.skb.apply_func(add_features, feature_table)
     encoded = all_features.skb.apply(skrub.TableVectorizer())
