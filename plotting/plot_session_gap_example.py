@@ -43,7 +43,7 @@ def plot(night, output_path=OUTPUT_PATH, gaps=GAPS):
     hours = (night["timestamp"].dt.hour() + night["timestamp"].dt.minute() / 60).to_list()
 
     fig, axes = plt.subplots(
-        len(gaps), 1, figsize=(11, 1.5 * len(gaps) + 1.3), sharex=True
+        len(gaps), 1, figsize=(13, 1.5 * len(gaps) + 1.6), sharex=True
     )
     for ax, gap, color in zip(axes, gaps, COLORS):
         ids = session_ids(night, gap)
@@ -54,12 +54,12 @@ def plot(night, output_path=OUTPUT_PATH, gaps=GAPS):
             ax.plot(
                 [min(starts), max(starts)],
                 [0, 0],
-                lw=9,
+                lw=12,
                 color=color,
                 alpha=0.35,
                 solid_capstyle="round",
             )
-        ax.scatter(hours, [0] * len(hours), s=26, color=color, zorder=3)
+        ax.scatter(hours, [0] * len(hours), s=60, color=color, zorder=3)
         ax.set_yticks([])
         ax.set_ylabel(f"gap = {gap} min", rotation=0, ha="right", va="center")
         ax.set_title(
@@ -77,7 +77,7 @@ def plot(night, output_path=OUTPUT_PATH, gaps=GAPS):
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=150)
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
     print(f"wrote {output_path}")
     plt.close(fig)
 

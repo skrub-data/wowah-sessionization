@@ -11,6 +11,8 @@ from src.utils import (
     sample_by_user,
 )
 
+plt.style.use("seaborn-v0_8-talk")
+
 df = pl.read_parquet("data/wowah_data_2008.parquet")
 df_user_month = pl.read_parquet("data/wowah_churn_data.parquet").select(
     "char", "month", "first_month"
@@ -85,7 +87,9 @@ tick_bins = bins[::tick_step]
 tick_theta = theta[::tick_step]
 tick_labels = [f"{h:02d}h" for h in range(24)]
 
-fig, axes = plt.subplots(1, 2, subplot_kw={"projection": "polar"}, figsize=(12, 6))
+fig, axes = plt.subplots(
+    1, 2, subplot_kw={"projection": "polar"}, figsize=(15, 7.5), layout="constrained"
+)
 
 for ax, vals, title in zip(
     axes, [start_vals, end_vals], ["Session Starts", "Session Ends"]
@@ -94,11 +98,23 @@ for ax, vals, title in zip(
     ax.set_theta_zero_location("N")  # hour 0 at the top
     ax.set_theta_direction(-1)  # clockwise, like a clock
     ax.set_xticks(tick_theta)
-    ax.set_xticklabels(tick_labels, fontsize=7)
-    ax.set_title(title, pad=15)
+    # 24 hourly labels around a circle: the one place the talk preset's 13 pt
+    # ticks do not fit, so step down to 10 pt.
+    ax.set_xticklabels(tick_labels, fontsize=10)
+    # The radial gridlines carry no labels: they would collide with the hourly
+    # ones. The peak count is annotated in the empty quadrant instead.
+    ax.set_yticklabels([])
+    ax.annotate(
+        f"peak {vals.max():,}",
+        xy=(np.deg2rad(180), vals.max() * 0.55),
+        ha="center",
+        va="center",
+        fontsize=11,
+        color="#333333",
+    )
+    ax.set_title(title, pad=28)
 
-fig.suptitle("Distribution of Session Start/End Times", fontsize=13)
-plt.tight_layout()
+fig.suptitle("Distribution of Session Start/End Times")
 plt.show()
 
 # %%

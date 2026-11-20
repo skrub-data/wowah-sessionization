@@ -1,5 +1,8 @@
 # %%
+import matplotlib.pyplot as plt
 import polars as pl
+
+plt.style.use("seaborn-v0_8-talk")
 
 # %%
 df = pl.read_parquet("data/wowah_data_2008.parquet")
@@ -20,8 +23,6 @@ stats_by_month = (
     .sort("month")
 )
 # %%
-import matplotlib.pyplot as plt
-
 # Prepare data
 stats_df = stats_by_month.to_pandas()
 months = stats_df["month"].astype(str)
@@ -29,7 +30,7 @@ avg_levels = stats_df["avg_level"]
 counts = stats_df["count"]
 
 # Create figure and primary axis
-fig, ax1 = plt.subplots(figsize=(14, 6))
+fig, ax1 = plt.subplots(figsize=(15, 7))
 
 # Plot average level on primary axis
 color = "tab:blue"
@@ -37,6 +38,7 @@ ax1.set_xlabel("Month")
 ax1.set_ylabel("Average Level", color=color)
 ax1.bar(months, avg_levels, alpha=0.7, label="Average Level", color=color)
 ax1.tick_params(axis="y", labelcolor=color)
+ax1.set_xticks(range(len(months)))
 ax1.set_xticklabels(months, rotation=45, ha="right")
 
 # Create secondary axis for count
@@ -48,14 +50,12 @@ ax2.plot(
     counts,
     color=color,
     marker="o",
-    linewidth=2,
-    markersize=8,
     label="Character Count",
 )
 ax2.tick_params(axis="y", labelcolor=color)
 
 # Add title and adjust layout
-plt.title("Average Level and Character Count by Month", fontsize=14, fontweight="bold")
+plt.title("Average Level and Character Count by Month")
 fig.tight_layout()
 plt.show()
 # %%
@@ -76,15 +76,13 @@ avg_char = char_stats_df["avg_char"]
 median_char = char_stats_df["median_char"]
 
 # Create figure
-fig, ax = plt.subplots(figsize=(14, 6))
+fig, ax = plt.subplots(figsize=(15, 7))
 
 # Plot both lines
 ax.plot(
     months,
     avg_char,
     marker="o",
-    linewidth=2,
-    markersize=8,
     label="Average",
     color="tab:blue",
 )
@@ -92,19 +90,15 @@ ax.plot(
     months,
     median_char,
     marker="s",
-    linewidth=2,
-    markersize=8,
     label="Median",
     color="tab:orange",
 )
 
 # Customize plot
-ax.set_xlabel("Month", fontsize=12)
-ax.set_ylabel("Character Value", fontsize=12)
-ax.set_title(
-    "Average and Median Character Value by Month", fontsize=14, fontweight="bold"
-)
-ax.legend(fontsize=11)
+ax.set_xlabel("Month")
+ax.set_ylabel("Character Value")
+ax.set_title("Average and Median Character Value by Month")
+ax.legend()
 ax.grid(True, alpha=0.3)
 plt.xticks(rotation=45, ha="right")
 fig.tight_layout()

@@ -16,6 +16,8 @@ import numpy as np
 import polars as pl
 from matplotlib.colors import ListedColormap
 
+plt.style.use("seaborn-v0_8-talk")
+
 DATA_PATH = "data/wowah_data_2008.parquet"
 OUTPUT_PATH = Path("images/sampling.png")
 FRACTION = 0.1
@@ -68,11 +70,10 @@ def draw(ax, mask, months, n_kept):
         vmax=2,
     )
     ax.set_xticks(range(len(months)))
-    ax.set_xticklabels([m.strftime("%b") for m in months], fontsize=9)
+    ax.set_xticklabels([m.strftime("%b") for m in months])
     ax.set_yticks([])
     ax.set_title(
         f"{mask.shape[0]} characters, a snippet of the {n_kept:,} the sample kept",
-        fontsize=10,
         loc="left",
     )
     for side in ("top", "right", "left"):
@@ -94,7 +95,7 @@ def plot(beats, output_path=OUTPUT_PATH):
 
     mask = grid(row_cells, truth, shared, months)
 
-    fig, ax = plt.subplots(figsize=(9.2, 4.6))
+    fig, ax = plt.subplots(figsize=(11, 5.6), layout="constrained")
     draw(ax, mask, months, len(kept))
 
     handles = [
@@ -105,13 +106,10 @@ def plot(beats, output_path=OUTPUT_PATH):
     fig.legend(
         handles,
         ["played, kept by the sample", "played, dropped by the sample", "did not play"],
-        loc="lower center",
+        loc="outside lower center",
         ncol=3,
         frameon=False,
-        fontsize=9,
-        bbox_to_anchor=(0.5, -0.04),
     )
-    fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=160, bbox_inches="tight")
     print(f"wrote {output_path}")

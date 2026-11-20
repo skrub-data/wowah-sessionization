@@ -67,7 +67,7 @@ EXPANSIONS = (
 )
 
 # Vertical room (in points) left above the axes for the two-line labels.
-EXPANSION_LABEL_PAD = 28
+EXPANSION_LABEL_PAD = 34
 
 
 # %%
@@ -599,10 +599,11 @@ def import_pyplot(interactive=False):
         import matplotlib.pyplot as plt
     except ImportError:
         return None, None
+    plt.style.use("seaborn-v0_8-talk")
     return plt, mdates
 
 
-def annotate_expansions(ax, start, end, fontsize=8, color="0.35"):
+def annotate_expansions(ax, start, end, fontsize=11, color="0.35"):
     """
     Mark expansion releases that fall inside the plotted time range.
 
@@ -646,15 +647,17 @@ def format_month_axis(ax, mdates, interval=4):
 
 def plot_gap_histogram(plt, gap_hist, output_dir, dpi=150, show=False):
     """How often does a character disappear for a given amount of time?"""
-    fig, ax = plt.subplots(figsize=(12, 4.5))
+    fig, ax = plt.subplots(figsize=(15, 6.5))
     ax.bar(
         range(gap_hist.height),
         gap_hist["len"].to_numpy(),
         color="steelblue",
     )
     ax.set_xticks(range(gap_hist.height))
+    # 13 bucket labels along the axis: the talk preset's 13 pt ticks crowd
+    # them, so step down to 11 pt.
     ax.set_xticklabels(
-        [str(b) for b in gap_hist["bin"]], rotation=60, ha="right", fontsize=7
+        [str(b) for b in gap_hist["bin"]], rotation=60, ha="right", fontsize=11
     )
     ax.set_yscale("log")
     ax.set_xlabel("gap between heartbeats")
@@ -671,12 +674,12 @@ def plot_characters_by_month(plt, mdates, monthly, output_dir, dpi=150, show=Fal
     characters = monthly["characters"].to_list()
     regular = monthly["regular_characters"].to_list()
 
-    fig, ax = plt.subplots(figsize=(12, 5))
+    fig, ax = plt.subplots(figsize=(15, 6.5))
     ax.plot(
         months,
         characters,
         marker="o",
-        ms=3,
+        ms=5,
         color="tab:blue",
         label="seen at least once",
     )
@@ -685,7 +688,7 @@ def plot_characters_by_month(plt, mdates, monthly, output_dir, dpi=150, show=Fal
         months,
         regular,
         marker="o",
-        ms=3,
+        ms=5,
         color="tab:orange",
         label=(
             f"regular (≥{REGULAR_MIN_ACTIVE_DAYS} active days, "
@@ -711,12 +714,11 @@ def plot_levels_over_time(plt, mdates, monthly, output_dir, dpi=150, show=False)
     median_level = monthly["median_level"].to_list()
     max_level = monthly["max_level"].to_list()
 
-    fig, ax = plt.subplots(figsize=(12, 5))
+    fig, ax = plt.subplots(figsize=(15, 6.5))
     ax.step(
         months,
         max_level,
         where="post",
-        linewidth=2,
         color="tab:orange",
         label="max level",
     )
@@ -724,8 +726,7 @@ def plot_levels_over_time(plt, mdates, monthly, output_dir, dpi=150, show=False)
         months,
         median_level,
         marker="o",
-        ms=3,
-        linewidth=2,
+        ms=5,
         color="tab:blue",
         label="median level",
     )

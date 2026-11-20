@@ -2,9 +2,7 @@
 import polars as pl
 import matplotlib.pyplot as plt
 
-# sns.set_context("talk")
 plt.style.use("seaborn-v0_8-talk")
-# plt.rc("font", family="serif")
 
 from add_churn import build_churn_dataset
 
@@ -33,7 +31,7 @@ split_labels = [f"Split {i+1}" for i in range(n)]
 cmap = plt.cm.plasma
 colors = [cmap(j / max(n - 1, 1)) for j in range(n)]
 
-fig, ax = plt.subplots(figsize=(10, 6))
+fig, ax = plt.subplots(figsize=(13, 7.5))
 
 for j in range(n):
     ax.barh(
@@ -48,17 +46,17 @@ cumsums = df_grouped["cumsum"].to_list()
 for i, total in enumerate(cumsums):
     diff = lens[i] if i == 0 else lefts[i+1] - lefts[i]
     sign = "+" if diff >= 0 else ""
-    ax.text(total, months[i], f"  {total:,}\n ({sign}{diff:,})", va="center", fontsize=8)
+    ax.text(total, months[i], f"  {total:,}\n ({sign}{diff:,})", va="center")
 
 ax.invert_yaxis()  # Split 1 at top for natural reading order
 ax.set_xlabel("Number of (avatar, month) rows in the training set")
 ax.set_ylabel("CV Split (Month)")
 ax.set_title("Number of rows in each CV split")
 handles, labels = ax.get_legend_handles_labels()
-plt.legend(
+ax.legend(
     handles, labels,
-    title="CV Split", loc="upper right",
-    fontsize=8,
+    title="CV Split", loc="upper left", bbox_to_anchor=(1.01, 1.0),
+    frameon=False,
 )
 
 desc = (
@@ -75,17 +73,17 @@ ax.spines["right"].set_visible(False)
 ax.annotate(
     desc.strip(),
     xy=(0.1, 0.92),                 # arrow tip: near the short first-split bar
-    xytext=(0.62, 0.95),             # text box: top-middle of the axes
+    xytext=(0.58, 0.94),             # text box: top-middle of the axes
     xycoords="axes fraction",
     textcoords="axes fraction",
-    ha="center", va="top", fontsize=8,
+    ha="center", va="top",
     bbox=dict(boxstyle="round,pad=0.4", fc="lightgrey", ec="grey", alpha=0.8),
     arrowprops=dict(arrowstyle="->", color="grey"),
 )
 ax.annotate(
     "",
     xy=(0.85, 0.2),                 # arrow tip: toward the long last-split bar
-    xytext=(0.68, 0.82),             # bottom edge of the text box
+    xytext=(0.62, 0.82),             # bottom edge of the text box
     xycoords="axes fraction",
     textcoords="axes fraction",
     arrowprops=dict(arrowstyle="->", color="grey"),

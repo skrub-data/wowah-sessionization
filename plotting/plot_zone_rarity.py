@@ -21,6 +21,8 @@ from skrub import SessionEncoder
 from adding_features import get_location_gini, get_zone_rarity
 from src.utils import get_session_duration
 
+plt.style.use("seaborn-v0_8-talk")
+
 DATA_PATH = "data/wowah_data_2008.parquet"
 OUTPUT_PATH = Path("images/zone_rarity.png")
 MONTH = 3
@@ -32,10 +34,10 @@ HUB_QUANTILE = 0.1
 LABELLED = {
     "Orgrimmar": (-4, -14),
     "Shattrath City": (10, -3),
-    "The Barrens": (12, 8),
+    "The Barrens": (14, 22),
     "Durotar": (-64, -10),
     "Wailing Caverns": (8, 2),
-    "Warsong Gulch": (6, 6),
+    "Warsong Gulch": (-78, 14),
     "GM Island": (6, 4),
     "Ironforge": (6, 4),
 }
@@ -88,7 +90,7 @@ def plot_rarity(ax, zones):
         textcoords="offset points",
         ha="left",
         va="bottom",
-        fontsize=8,
+        fontsize=11,
         color="#2a52a8",
     )
 
@@ -98,7 +100,7 @@ def plot_rarity(ax, zones):
             (row["unique_visitors"], row["rarity"]),
             xytext=LABELLED[row["zone"]],
             textcoords="offset points",
-            fontsize=7.5,
+            fontsize=10,
             color="#333333",
         )
 
@@ -107,7 +109,7 @@ def plot_rarity(ax, zones):
     ax.set_xlabel("characters that visited the zone (log scale)")
     ax.set_ylabel(r"rarity  $\log(N / n_\mathrm{v})$")
     ax.set_title("Zone rarity in March 2008")
-    ax.legend(frameon=False, loc="upper right", fontsize=8)
+    ax.legend(frameon=False, loc="upper right")
     ax.spines[["top", "right"]].set_visible(False)
 
 
@@ -123,13 +125,13 @@ def plot_gini(ax, gini):
         xy=(median, ax.get_ylim()[1] * 0.92),
         xytext=(6, 0),
         textcoords="offset points",
-        fontsize=8,
+        fontsize=11,
         color="#333333",
     )
     ax.annotate(
         f"{zero:.0%} of characters\nvisit a single\nnon-hub zone",
         xy=(0.06, ax.get_ylim()[1] * 0.62),
-        fontsize=8,
+        fontsize=11,
         color="#8a4a10",
     )
 
@@ -140,7 +142,7 @@ def plot_gini(ax, gini):
 
 
 def plot(zone_sessions, zones, gini, output_path=OUTPUT_PATH):
-    fig, axes = plt.subplots(1, 2, figsize=(12.4, 4.6))
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6.4))
     plot_rarity(axes[0], zones)
     plot_gini(axes[1], gini)
     fig.tight_layout()
