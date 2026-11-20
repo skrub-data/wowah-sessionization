@@ -1,10 +1,3 @@
----
-title: "Section draft: caching the plan"
-format: html
-execute:
-  enabled: false
----
-
 <!--
 Drop-in section for draft.qmd. Kept in its own file so it can be edited without
 touching the main draft.
@@ -144,6 +137,5 @@ so caching matters far less there. `predict_unseen` fits on the historical files
 and then parses the unseen ones once; the cache saves that single parse on a
 repeat run and nothing more.
 
-Code: `main.py:61` (`CACHE_DIR`), `main.py:65` (`_source_fingerprint`),
-`main.py:90` (`FEATURES_FINGERPRINT`), `main.py:302` (`load`),
-`main.py:313` (`make_data_op`), `main.py:419` (`predict_unseen`).
+Code: `CACHE_DIR`, `_source_fingerprint` and `FEATURES_FINGERPRINT` in `main.py`,
+and `load`, `make_data_op` and `predict_unseen`.

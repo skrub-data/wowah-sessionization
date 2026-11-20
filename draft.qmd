@@ -618,7 +618,7 @@ row-level sampling would be wrong.
 - The cost/accuracy trade-off: 10% of characters by default, `--fraction 1` for
   everything.
 
-Code: `src/utils.py:3` (`sample_by_user`), `main.py:248` (`load`).
+Code: `sample_by_user` and `load`, in `src/utils.py` and `main.py`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-sampling.png`
@@ -643,9 +643,8 @@ never defines the boundary, which is a tuned hyperparameter.
 - The zone-session encoder (`split_by=["char", "zone"]`) used for location
   features is a *second*, independent sessionisation.
 
-Code: `main.py:128` (`build_feature_table`, `session_gap`),
-`src/utils.py:18` (`get_session_duration`),
-`adding_features.py:71` (`add_session_features`).
+Code: `build_feature_table` and `session_gap` in `main.py`, `get_session_duration`
+in `src/utils.py`, and `add_session_features` in `adding_features.py`.
 
 The whole path, from a raw heartbeat table to a row of session features
 (`session_features.mmd` at the repository root, rendered to
@@ -736,16 +735,12 @@ of the feature engineering and deserve their own subsection.
   fraction of a character's zone-sessions spent in hubs).
 - **Gini coefficient** over time spent per zone: low Gini = spread evenly across
   many zones ("casual explorer"), high Gini = concentrated in few zones
-  ("grinding"). Note that `add_gini=True` is hard-coded in `make_data_op`, so it
-  is always on when location features are on.
+  ("grinding"). Note that `add_gini` is set in `make_data_op` and is off by
+  default, so the coefficient is only computed when explicitly requested.
 - Why this block is optional: it is the slowest part of the feature table.
 
-Code: `adding_features.py:120` (`get_zone_rarity`),
-`adding_features.py:162` (`add_player_rarity`),
-`adding_features.py:210` (`gini`),
-`adding_features.py:225` (`get_location_gini`),
-`adding_features.py:275` (`add_location_features`),
-`main.py:295` (`add_gini=True`).
+Code: `get_zone_rarity`, `add_player_rarity`, `gini`, `get_location_gini` and
+`add_location_features` in `adding_features.py`, and `add_gini` in `make_data_op`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-zone-rarity.png`
@@ -771,8 +766,7 @@ The post never names the model. It jumps from "the plan" to a results table.
 - `roc_auc` as the scoring function, and why AUC rather than accuracy given the
   base rate.
 
-Code: `main.py:299` (`TableVectorizer`), `main.py:301` (`HGB`),
-`main.py:302` (`with_scoring`).
+Code: `TableVectorizer`, `HGB` and `with_scoring` in `make_data_op`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-model-graph.svg`
@@ -793,7 +787,8 @@ The post gives AUC values without saying what a trivial model would score.
   predicting "not churned" always. Say which metric is being reported and why.
 - The distribution of `churn_next` by month, to show that the base rate drifts.
 
-Code: `add_churn.py` (`build_churn_dataset`), `main.py` (`with_scoring("roc_auc")`).
+Code: `build_churn_dataset` in `add_churn.py`, and `with_scoring("roc_auc")` in
+`make_data_op`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-base-rate.png`
@@ -820,8 +815,8 @@ the choice are only quoted, not shown.
 - This is the number that matters operationally: you can only retain characters
   who are still around.
 
-Code: `add_churn.py` (`build_churn_dataset`, `only_prev_active`), `main.py`
-(`make_data_op`).
+Code: `build_churn_dataset` and `only_prev_active` in `add_churn.py`, and
+`make_data_op` in `main.py`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-auc-split.png`
@@ -842,8 +837,8 @@ shows default hyperparameters.
 - What the search actually found, and whether the tuned plan beats the default.
 - The honest caveat: tuning on the same folds you report is optimistic.
 
-Code: `main.py:342` (`random_search`), `main.py:282` (`choose_from` /
-`choose_bool` / `choose_float`).
+Code: `random_search` in `main.py`; the search space is declared in
+`make_data_op` with skrub's `choose_from`, `choose_bool` and `choose_float`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-optuna.png`
@@ -867,9 +862,8 @@ the post.
   December 2008.
 - The row-order trick used to recover `(char, month)` for each prediction.
 
-Code: `main.py:60` (`HISTORICAL_END`), `main.py:71` (`UNSEEN_START`),
-`main.py:72` (`UNSEEN_END`), `main.py:312` (`get_env`),
-`main.py:359` (`predict_unseen`).
+Code: `HISTORICAL_END`, `UNSEEN_START`, `UNSEEN_END`, `get_env` and
+`predict_unseen` in `main.py`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-train-unseen-timeline.png`
@@ -891,7 +885,7 @@ reader to inspect the plan.
 - How to open it (`reports/execution_report/index.html`).
 - Which node dominates the runtime (expected: the location features).
 
-Code: `main.py:415` (`data_op.skb.report`).
+Code: `data_op.skb.report` in `evaluate`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-execution-report.png`
@@ -913,7 +907,8 @@ mentions.
 - Expansion releases are a confounder: they cause both an influx of characters
   and a change in behaviour. The post mentions them but never uses them.
 
-Code: `main.py:269` (`guild == -1`), `explore_data.py:64` (`EXPANSIONS`).
+Code: the `guild == -1` mapping in `make_data_op`, and `EXPANSIONS` in
+`explore_data.py`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-levels-and-expansions.png`
@@ -935,8 +930,8 @@ There is no "how to run this" section.
   section).
 - Runtime expectations, so a reader knows whether 10% is a reasonable default.
 
-Code: `main.py:386` (argparse), `src/utils.py:10` (`seed=42`),
-`explore_data.py:842` (`parse_args`).
+Code: the `argparse` block in `main.py`, `seed` in `sample_by_user`, and
+`parse_args` in `explore_data.py`.
 
 ::: {.callout-note}
 **Figure placeholder** — none. A short code block with the three commands is
@@ -959,8 +954,8 @@ more honest and more useful.
 - A survival-analysis framing (time-to-churn) would use the censored rows that
   the current setup throws away.
 
-Code: `add_churn.py:148` (`churn_next` nulling), `add_churn.py:190` (dropping
-null targets).
+Code: the `churn_next` nulling and the dropping of null targets in
+`build_churn_dataset`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-censoring.png`
@@ -986,9 +981,8 @@ runtime material rather than modelling material, so it reads naturally next to
 - The cache is 587 MB and git-ignored. Deleting it is always safe and costs a full
   recompute.
 
-Code: `main.py:61` (`CACHE_DIR`), `main.py:65` (`_source_fingerprint`),
-`main.py:90` (`FEATURES_FINGERPRINT`), `main.py:302` (`load`),
-`main.py:313` (`make_data_op`).
+Code: `CACHE_DIR`, `_source_fingerprint` and `FEATURES_FINGERPRINT` in `main.py`,
+and `load` and `make_data_op`.
 
 ::: {.callout-note}
 **Figure placeholder** — none. A table of the three cache states (off / cold /

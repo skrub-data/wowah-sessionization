@@ -1,11 +1,3 @@
----
-title: "Section draft: location features"
-format: html
-execute:
-  enabled: false
----
-
-
 ### Location features in depth
 
 The previous section on sessionization modeled *when* a character is online, and 
@@ -17,7 +9,7 @@ to the game.
 While generating these features originally appeared to be a promising direction, 
 experimental results seem to show little to no impact on the actual prediction
 performance (see [Does the block earn its place?](does-the-block-earn-its-place)).
-We keep keep the investigation for historical reasons, and to showcase a different
+We keep the investigation for historical reasons, and to showcase a different
 application of the `SessionEncoder`.
 
 #### Sessionizing over character and zone
@@ -242,8 +234,6 @@ difference.
 use_location = skrub.choose_bool(name="location_features")
 ```
 
-Code: `adding_features.py:120` (`get_zone_rarity`), `adding_features.py:162`
-(`add_player_rarity`), `adding_features.py:225` (`gini`),
-`adding_features.py:240` (`get_location_gini`), `adding_features.py:290`
-(`add_location_features`), `main.py:203` (the zone encoder) and `main.py:283`
-(`use_location`).
+Code: `get_zone_rarity`, `add_player_rarity`, `gini`, `get_location_gini` and
+`add_location_features` in `adding_features.py`; the zone encoder and
+`use_location` in `make_data_op`.
