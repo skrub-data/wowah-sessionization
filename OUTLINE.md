@@ -246,14 +246,34 @@ point of the section.
 `Dependencies` mentions Optuna, and `random_search` exists, but the post only ever
 shows default hyperparameters.
 
-- `random_search`: Optuna backend, `n_iter=16`, `n_jobs=-1`, results persisted to
-  `wowah_churn_study.db`.
-- The search space: `session_gap`, `location_features`, `lags`, `learning_rate`.
-- What the search actually found, and whether the tuned plan beats the default.
-- The honest caveat: tuning on the same folds you report is optimistic.
+- The choices are grouped by cost, and the grouping is what decides how they can
+  be searched: feature-table choices (one cache entry and one rebuild each),
+  structural choices (one refit per fold), capacity choices (the model's own).
+- Three staged studies, each with its own `study_name`:
+  `features` (2% sample, 40 trials), `structural` (10%, logreg, 40 trials),
+  `capacity` (10%, HGB, 60 trials). The winner of each is passed to the next
+  through `frozen=`.
+- The search is sequential and there is no option to change it. Parsing spawns a
+  process pool sized to the core count, so N parallel trials means N × cores
+  processes: 2 workers gave 1.4× and 4 gave 2.6× at a 2% sample, but 8 drove a
+  24 GB machine into 40 GB of swap. The earlier `n_jobs=-1` runs are the same
+  failure: 72 failed trials, all `location_features=1`, all dying within 9 s.
+- `timeout` is safe because the search is sequential; skrub only uses Optuna's
+  threaded parallelisation when a timeout is set *and* `n_jobs > 1`, and threads
+  deadlock against the parser's process pool. A timeout counts wall-clock time,
+  so a sleeping machine burns it — `n_iter` is the more predictable bound.
+- `study_name` is what makes a run resumable; without it skrub generates a fresh
+  UUID per call, which is why the database accumulated six studies.
+- What the search actually found: lags matter most (dropping them costs ~1.5 AUC
+  points), the monthly and location blocks help, the Gini coefficient does not,
+  and the class-level block is exactly neutral.
+- The honest caveat: tuning on the same folds you report is optimistic, and zone
+  rarity is computed over the sample, so the location block is noisier in the
+  search than in the final fit.
 
-Code: `random_search` in `main.py`; the search space is declared in
-`make_data_op` with skrub's `choose_from`, `choose_bool` and `choose_float`.
+Code: `random_search`, `STAGE_CHOICES` and `make_data_op(stage=..., frozen=...)`
+in `main.py`; the search space is declared with skrub's `choose_from`,
+`choose_bool`, `choose_int`, `choose_float`, `optional` and `match`.
 
 ::: {.callout-note}
 **Figure placeholder** — `images/TODO-optuna.png`
@@ -273,8 +293,9 @@ the post.
 - `predict_unseen` fits the whole graph — parsing included — on the historical
   files, then calls `.predict()` with the unseen environment. The same code path
   parses files it has never seen.
-- Why January 2009 stops on the 10th, and why that caps the last usable target at
-  December 2008.
+- Why January 2009 stops on the 10th, and why that makes December's label
+  unreliable: December's target is `churn` in January, so a character who played
+  on January 11th or later is recorded as absent. Only November is scored.
 - The row-order trick used to recover `(char, month)` for each prediction.
 
 Code: `HISTORICAL_END`, `UNSEEN_START`, `UNSEEN_END`, `get_env` and

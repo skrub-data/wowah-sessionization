@@ -45,9 +45,12 @@ files, then calls `.predict()` with the unseen environment. The same code path
 parses files it has never seen, which is the point: there is no separate
 pre-processing script that could drift from the training one.
 
-January 2009 stops on the 10th because that is where the dataset ends, and that
-caps the last usable target at December 2008 — a January row's label would need
-February's data to be observed.
+January 2009 stops on the 10th because that is where the dataset ends. That caps
+the last *usable* target at December 2008 — a January row's label would need
+February's data to be observed — but December's own label is `churn` in January,
+and a character who played on January 11th or later is recorded as absent. The
+label is therefore wrong for those characters, so the unseen evaluation reports
+November only.
 
 ## Reading the execution report
 

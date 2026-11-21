@@ -83,8 +83,19 @@ The actual value is a modelling decision that can be tuned along all other hyper
 thanks to the skrub choices:
 
 ```python
-session_gap = skrub.choose_from([30, 60, 15], name="session_gap")
+session_gap = skrub.choose_from([30, 45, 60], name="session_gap")
 ```
+
+15 minutes is deliberately not offered. Heartbeats arrive roughly every ten
+minutes, so a 15-minute threshold splits a session whenever a single poll is
+missed: only 53.8% of gaps are at most 10 minutes, so the threshold would be
+cutting through the middle of the distribution rather than separating "still
+playing" from "took a break". At 30 minutes 91.1% of gaps stay inside a session,
+and at 60 minutes 92.0%.
+
+The zone-level encoder has its own gap (`zone_session_gap`), because how long a
+character stayed in one zone is a different process from how long they played.
+`"same"` reuses `session_gap`, which is the historical behaviour.
 
 On the 2008 data, the vast majority (83.6%) of consecutive-heartbeat gaps are
 within 15 minutes, while 91.0% of the gaps are within 60. Their
