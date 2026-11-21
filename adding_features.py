@@ -304,10 +304,15 @@ def add_location_features(df, historical_data_zones, add_gini=False):
 
 
 # %%
-def add_general_features(df, historical_data):
+def add_general_features(
+    df, historical_data, use_monthly_features=True, use_class_features=True
+):
+    """Session features are always added; the other two blocks are optional."""
     df = add_session_features(df, historical_data)
-    df = add_monthly_player_features(df, historical_data)
-    df = add_class_features(df, historical_data)
+    if use_monthly_features:
+        df = add_monthly_player_features(df, historical_data)
+    if use_class_features:
+        df = add_class_features(df, historical_data)
     return df
 
 

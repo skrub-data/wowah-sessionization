@@ -62,7 +62,7 @@ evaluate = "python main.py --env train"
 evaluate-all = "python main.py --env train --fraction 1"
 # Evaluate on the held-out raw files (Oct 2008 - Jan 2009)
 evaluate-unseen = "python main.py --env unseen"
-# Fit on the historical files, then predict Nov/Dec 2008 from the held-out ones
+# Fit on the historical files, then predict Nov 2008 from the held-out ones
 predict-unseen = "python main.py --env predict-unseen"
 # Plotting scripts. `plot-user-months` reads "../data/...", hence its own cwd.
 plot-session-times = "python plotting/plot_session_start_end.py"
