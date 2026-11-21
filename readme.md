@@ -88,19 +88,83 @@ earlier layout and need adjusting before use.
 pixi run evaluate                       # fit on the historical raw files, 10% of characters
 pixi run evaluate-all                   # same, keeping every character
 pixi run evaluate-unseen                # evaluate on the held-out raw files
-pixi run predict-unseen                 # fit on historical, predict Nov/Dec 2008
+pixi run predict-unseen                 # fit on historical, predict Nov 2008
 pixi run python main.py --env train --fraction 1   # same as evaluate-all
 ```
 
 `--env` is `train` (default), `unseen` or `predict-unseen`, and `--fraction` is
 the share of characters to sample. The same options exist as arguments of
 `evaluate()`, `cross_validate()` and `random_search()` (Optuna backend, results
-in `wowah_churn_study.db`). Uncomment the calls at the bottom of `main.py` to use
-them.
+in `wowah_churn_study.db`).
 
-Searched hyperparameters: `session_gap` (15, 30 or 60 minutes), whether to use
-location features, the lags (none, 1, 1-2 or 1-2-3 months) and the learning
-rate of the gradient boosting model.
+### Tuning
+
+The choices are grouped by what they cost to evaluate, and `--stage` selects
+which group a run declares:
+
+| `--stage` | Choices | Model | Sample | Cost/trial |
+|---|---|---|---|---|
+| `features` | the eight feature-table choices | HGB, defaults | 2% | 145 s |
+| `gaps` | the three noisy feature choices, re-tested | logistic regression | 10% | 766 s |
+| `structural` | the six post-feature-table choices | logistic regression | 10% | 342 s |
+| `capacity` | the four model hyperparameters | HGB | 10% | 356 s |
+| `full` | all of them | HGB | — | — |
+| `none` | no choice at all; every knob at its default | HGB | — | — |
+
+Costs are sequential, measured on this machine with the parse cached. The
+`gaps` stage is the most expensive per trial because each of its 18 combinations
+is a cold feature table; it is also the smallest.
+
+```bash
+# Stage 1: which features are worth building (2% sample, ~2 min/trial warm)
+pixi run python main.py --env train --fraction 0.02 --stage features \
+    --search --n-iter 40 --study-name wowah_churn_1_features
+
+# Stage 2: re-test the three noisy feature choices at 10%, rest frozen
+pixi run python main.py --env train --fraction 0.1 --stage gaps \
+    --search --n-iter 18 --study-name wowah_churn_2_gaps \
+    --frozen '{"lags": [1,2,3], "diff_lags": [1,2], "location_features": true,
+               "add_gini": false, "use_monthly_features": true}'
+
+# Stage 3: structural choices, with the feature choices pinned
+pixi run python main.py --env train --fraction 0.1 --stage structural \
+    --search --n-iter 40 --study-name wowah_churn_3_structural \
+    --frozen '{"session_gap": 45, "zone_session_gap": null,
+               "use_class_features": false, "lags": [1,2,3], "diff_lags": [1,2],
+               "location_features": true, "add_gini": false,
+               "use_monthly_features": true}'
+
+# Stage 4: model capacity, with everything else pinned
+pixi run python main.py --env train --fraction 0.1 --stage capacity \
+    --search --n-iter 60 --study-name wowah_churn_4_capacity \
+    --frozen '{"session_gap": 45, "lags": [1,2,3], "drop_char": "DropCols", ...}'
+
+# Final: refit the winning configuration on every character
+pixi run python main.py --env train --fraction 1 --stage none \
+    --frozen '{"session_gap": 45, "lags": [1,2,3], ...}'
+```
+
+`--frozen` takes a JSON object mapping choice names to values; JSON has no
+tuples, so `lags` and `diff_lags` are given as lists and converted on load.
+`--study-name` is what makes a run resumable — without it skrub generates a
+fresh UUID per call. `--timeout` bounds the search in seconds.
+
+The search runs **sequentially**. Parallel trials are not offered: `parse_files`
+spawns a process pool sized to the core count, so N workers on a cold cache
+means N × cores processes, and 8 workers drove a 24 GB machine into 40 GB of
+swap. See AGENTS.md, "Do not parallelise the search", for the measurements.
+
+`--timeout` bounds the search in wall-clock seconds. It is safe because the
+search is sequential — skrub only switches to Optuna's threaded
+parallelisation when a timeout is set *and* `n_jobs > 1`, and threads deadlock
+against the parser's process pool. Note that a sleeping machine burns the
+timeout, so `--n-iter` is the more predictable bound.
+
+Searched hyperparameters: the session gap (30, 45 or 60 minutes), the
+zone-session gap, the lags and diffs, whether to use location features and the
+Gini coefficient, whether to add the monthly and class-level blocks, whether to
+drop `char` and `month`, the vectorizer's cardinality threshold, high-cardinality
+encoder and null-drop fraction, and the model's regularisation and capacity.
 
 Other tasks: `pixi run churn` prints the churn table, `pixi run explore` profiles
 the full heartbeat dataset (HTML report and plots in `reports/exploration/`),
