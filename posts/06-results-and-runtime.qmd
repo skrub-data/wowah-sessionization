@@ -8,23 +8,98 @@ format: html
 
 ## Results
 
-Evaluation on the raw files of January to October 2008 (`HISTORICAL_END`), 10%
-sample of the characters, default hyperparameters, ROC AUC per test month:
+Evaluation on the historical window (through October 2008), 10% sample of the
+characters, ROC AUC per test month:
 
 | Definition | Mar | Apr | May | Jun | Jul | Aug | Sep |
 |---|---|---|---|---|---|---|---|
 | All rows (`only_prev_active=False`, old) | 0.50 | 0.55 | 0.75 | 0.79 | 0.79 | 0.83 | 0.79 |
-| Characters active in `M - 1` (current) | — | 0.82 | 0.82 | 0.82 | 0.83 | 0.87 | 0.88 |
+| Characters active in `M - 1`, default hyperparameters | — | 0.82 | 0.82 | 0.82 | 0.83 | 0.87 | 0.88 |
+| Characters active in `M - 1`, tuned | 0.89 | 0.87 | 0.86 | 0.87 | 0.87 | 0.89 | 0.89 |
 
-The two rows score different populations, so they are not directly comparable.
-The near-chance first folds of the old definition do not appear with the current
-one, and the rows with `prev_played` false are not "easy" — they have no
-features, so the model cannot rank them (AUC 0.43 to 0.80 within that group).
-Compared on the same test rows, training on all rows gave 0.64 to 0.82, against
-0.82 to 0.90 when training on active rows only.
+The three rows score different populations or different pipelines, so they are
+not directly comparable. The near-chance first folds of the old definition do not
+appear with the current one, and the rows with `prev_played` false are not "easy"
+— they have no features, so the model cannot rank them (AUC 0.43 to 0.80 within
+that group). Compared on the same test rows, training on all rows gave 0.64 to
+0.82, against 0.82 to 0.90 when training on active rows only.
 
-These numbers are a sanity check, not a tuned benchmark, and they change by a few
-hundredths between runs: `sample_by_user` is seeded, but the model itself is not.
+The tuned row is the mean over the 30 folds of the final configuration, described
+below. It is optimistic: the search ran on these same folds.
+
+These numbers change by a few hundredths between runs: `sample_by_user` is
+seeded, but the model itself is not.
+
+## The tuned configuration
+
+The search ran in three stages, each with its own Optuna study, each stage's
+winner carried into the next through `frozen=`. All three ran on a 10% sample of
+the characters; the final fit uses every character.
+
+| Stage | Choices | Model | Trials | Best AUC |
+|---|---|---|---|---|
+| `features` (2% sample) | the eight feature-table choices | HGB, defaults | 40 | 0.8599 |
+| `gaps` (10%) | `session_gap`, `zone_session_gap`, `use_class_features` | logreg | 18 | 0.8591 |
+| `structural` (10%) | the six post-feature-table choices | logreg | 40 | 0.8694 |
+| `capacity` (10%) | the four HGB hyperparameters | HGB | 60 | 0.8808 |
+
+The winning configuration:
+
+| Group | Values |
+|---|---|
+| Feature table | `session_gap=60`, `zone_session_gap=same`, `lags=(1,2,3)`, `diff_lags=(1,2)`, location on, Gini off, monthly on, class on |
+| Structural | `drop_month`, `cardinality_threshold=17`, `drop_null_fraction=0.9061` |
+| Model | HGB, `learning_rate=0.0344`, `max_leaf_nodes=54`, `min_samples_leaf=163`, `l2_regularization=0.0037` |
+
+Three findings are worth pulling out.
+
+**Lags matter most.** Dropping them entirely costs about 1.5 AUC points, the
+largest single effect in the whole search. The monthly per-character block and
+the location block each add about 0.5.
+
+**`learning_rate` dominates the model search**, with a correlation of −0.908
+against the score. The best value, 0.034, sits at the bottom of the range the
+search was given (0.02–0.3), which means the optimum is probably below it. The
+default of 0.1 was roughly three times too high.
+
+**Two choices turned out to be flat** and could be dropped from the space:
+`cardinality_threshold` (correlation −0.021) and `l2_regularization` (+0.009).
+
+### `char` is account age, not identity
+
+The structural search produced a result that looked wrong: dropping the `char`
+column cost 0.019 AUC, the largest effect anywhere. The obvious reading — the
+model memorises individual characters — is not what happens.
+
+`char` is an `Int32`, and `TableVectorizer` passes numeric columns through
+unchanged, so the model sees a raw integer rather than a one-hot identity. And
+character ids are assigned sequentially at creation, so the id is a near-perfect
+proxy for account age: Spearman correlation with the character's first observed
+month is **0.9986**.
+
+Account age is a strong churn predictor on its own:
+
+| Tenure (months) | Churn rate |
+|---|---|
+| 1 | 0.671 |
+| 2 | 0.362 |
+| 3 | 0.278 |
+| 6 | 0.243 |
+| 12 | 0.186 |
+
+`first_month` was never in the feature table — it is in `add_lagged_features`'s
+`exclude_cols` — so the model had no explicit age signal and read it off the id.
+
+Adding `tenure` as an explicit feature confirms the diagnosis. With tenure
+present, on the same folds:
+
+| Feature set | AUC |
+|---|---|
+| `char` kept | 0.8716 |
+| `char` dropped | **0.8730** |
+
+The 0.019 AUC that `char` appeared to carry was account age. Once tenure is
+explicit, the id adds nothing and dropping it is marginally better.
 
 ## Held-out evaluation on unseen files
 
@@ -40,10 +115,36 @@ October's activity, so if the unseen window started in November, the first month
 it could score would have no features at all. The overlap gives the unseen run
 one month of history to work from.
 
-`predict_unseen` fits the whole graph — parsing included — on the historical
-files, then calls `.predict()` with the unseen environment. The same code path
-parses files it has never seen, which is the point: there is no separate
-pre-processing script that could drift from the training one.
+`fit_final` fits the whole graph — parsing included — on the historical files
+using every character, and saves the learner with joblib. `score_unseen` loads
+that saved learner and calls `.predict()` with the unseen environment. The same
+code path parses files it has never seen, which is the point: there is no
+separate pre-processing script that could drift from the training one.
+
+Splitting the two matters because the fit is the expensive half. Once the learner
+is on disk, re-scoring is a load and a predict.
+
+### The result
+
+Fitted on every character through October 2008, scored on November 2008:
+
+| | |
+|---|---|
+| Rows scored | 12,603 |
+| Actual churn rate | 0.604 |
+| Predicted churn rate | 0.646 |
+| **ROC AUC** | **0.8324** |
+
+That is below the 0.8817 the same configuration scores in cross-validation, and
+the gap is expected rather than a bug. The cross-validation number is a mean over
+30 folds inside the historical window; this is a single month from a different
+period, and November's churn rate (0.60) is far above the ~0.36 the model was
+trained around. A shifted base rate is exactly the situation where a ranking
+metric degrades.
+
+The configuration is in `reports/final_config.json` and the fitted learner in
+`reports/final_learner.joblib`, so the run is reproducible without re-running the
+search.
 
 January 2009 stops on the 10th because that is where the dataset ends. That caps
 the last *usable* target at December 2008 — a January row's label would need
@@ -80,15 +181,37 @@ miss when reading the table:
 The `pixi` tasks and the `main.py` CLI are the entry points:
 
 ```bash
+# Evaluate the plan on the historical window
 pixi run python main.py --env train --fraction 0.1
-pixi run python main.py --env unseen
-pixi run python main.py --env predict-unseen
+
+# Run one search stage
+pixi run python main.py --env train --fraction 0.1 --stage capacity \
+    --search --n-iter 60 --study-name wowah_churn_capacity \
+    --frozen '{"session_gap": 60, "lags": [1,2,3], ...}'
+
+# Fit on every character and save the learner
+pixi run python main.py --env fit-final --fraction 1 \
+    --frozen '{"session_gap": 60, "lags": [1,2,3], ...}'
+
+# Load the saved learner and score November 2008
+pixi run python main.py --env score-unseen
+```
+
+`run_stages.py` chains the stages, carrying each winner into the next:
+
+```bash
+pixi run python run_stages.py --stages gaps structural capacity
 ```
 
 `explore_data.py` regenerates the exploration figures. Determinism is partial:
 `sample_by_user` uses `seed=42`, but the model is not seeded, so AUC varies by a
-few hundredths between runs. At `--fraction 0.1` a cached run takes a few
-minutes; at `--fraction 1` expect the parse alone to take about an hour.
+few hundredths between runs. With the parquet source a 10% trial takes about two
+minutes; the full-data fit takes about the same, because the parse is no longer
+the bottleneck.
+
+The search runs sequentially. Parallel trials are not offered: parsing spawns a
+process pool sized to the core count, so N workers on a cold cache means N ×
+cores processes, and eight workers drove a 24 GB machine into 40 GB of swap.
 
 ## Caching the plan
 
@@ -112,11 +235,11 @@ files and later run on files it has never seen. But it also means the parse is
 re-executed every time the plan is evaluated, and `cross_validate` evaluates the
 plan **once per fit and once per score**:
 
-$$31 \text{ folds} \times 2 + 1 = 63 \text{ evaluations}$$
+$$30 \text{ folds} \times 2 + 1 = 61 \text{ evaluations}$$
 
-Each evaluation parses all 132,042 historical heartbeat files. A single parse
-takes **68 s** and returns 34.9M rows, so an uncached cross-validation spends
-about **71 minutes parsing alone** — before any feature engineering or model
+Each evaluation parses all 138,084 historical heartbeat files. A single parse
+takes **68 s** and returns 36.5M rows, so an uncached cross-validation spends
+about **69 minutes parsing alone** — before any feature engineering or model
 fitting.
 
 ### One line turns it off
@@ -133,14 +256,14 @@ Measured end to end at `load_fraction=0.1`:
 
 | | wall time | `parse_files` calls |
 |---|---:|---:|
-| cache off | ~75 min (extrapolated) | 63 |
+| cache off | ~69 min (extrapolated) | 61 |
 | cache cold | 289 s | 1 |
 | cache warm | 213 s | 0 |
 
 The cache-off figure is extrapolated rather than measured: an uncached
-`cross_validate` was still running after 30 minutes and was stopped. The 63-call
+`cross_validate` was still running after 30 minutes and was stopped. The 61-call
 count and the 68 s per-call cost were both measured directly, by memoizing the
-parse so the count could be taken without paying 63 × 68 s.
+parse so the count could be taken without paying 61 × 68 s.
 
 ### Two different savings, often confused
 
@@ -213,9 +336,37 @@ them. The training and unseen environments pass different file lists, so they ge
 separate cache entries and neither invalidates the other.
 
 The unseen set is much smaller — 10,058 files, 2.31M rows, **7.3 s** to parse —
-so caching matters far less there. `predict_unseen` fits on the historical files
-and then parses the unseen ones once; the cache saves that single parse on a
-repeat run and nothing more.
+so caching matters far less there. `fit_final` fits on the historical files and
+then parses the unseen ones once; the cache saves that single parse on a repeat
+run and nothing more.
+
+### Skipping the parse entirely
+
+Caching makes the parse happen once. Reading a pre-parsed file makes it happen
+never, and that is what the searches actually use.
+
+`build_parquet.py` writes the whole corpus to `data/wowah_data_all.parquet` by
+calling `parse_files` itself, so the two cannot drift. `make_data_op` then takes
+a `source` argument: `"parquet"` reads that file, `"raw"` parses the `.txt`
+files. Both go through the same code, so the choice does not change any result.
+
+Measured on the same configuration at a 10% sample:
+
+| Source | Wall time | AUC |
+|---|---:|---:|
+| `parquet` | 208 s | 0.8724 |
+| `raw` | 323 s | 0.8734 |
+
+The parquet is also a strict **superset** of what `list_raw_files` returns. A
+heartbeat at 23:57 is stored in the *next* day's folder, so filtering by folder
+name drops it while the parquet keeps it. That is the whole of the 0.001 AUC
+difference, and it is the reason the parquet is the default.
+
+Regenerate it whenever the parser changes:
+
+```bash
+pixi run python build_parquet.py
+```
 
 ## Limitations and what would come next
 

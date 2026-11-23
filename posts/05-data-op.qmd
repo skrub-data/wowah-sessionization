@@ -143,7 +143,7 @@ level and session count without any manual binning.
 
 The structural choices are searched with a logistic regression rather than the
 gradient-boosted model. That is a statistical choice, not a speed one: with the
-cache warm the feature table is free, so a trial costs 31 folds of vectorizer
+cache warm the feature table is free, so a trial costs 30 folds of vectorizer
 plus model fitting either way. A linear model has far fewer effective
 parameters, so the effect of dropping `char` or changing the cardinality
 threshold is readable from the results instead of being buried in the variance
@@ -237,8 +237,8 @@ The `gaps` stage exists because the Stage-1 ranking of `session_gap`,
 the top ten trials spanned 0.852 to 0.860, and the gaps' margins were 0.001 to
 0.002. Freezing a noise-level winner would propagate that noise into every later
 stage, so those three are re-tested at 10% with the rest of the feature group
-frozen. It is the most expensive stage per trial — 766 s, because each of the 18
-combinations is a cold feature table — but it is also the smallest.
+frozen. It is the most expensive stage per trial, because each of the 18
+combinations is a cold feature table, but it is also the smallest.
 
 The winner of each stage is passed to the next through `frozen=`, so the later
 stages search a smaller space around a configuration that is already known to be
@@ -248,7 +248,7 @@ unresolved choice.
 
 ### What the feature search found
 
-40 trials at a 2% sample, mean ROC AUC over the 31 folds. The marginal effect of
+40 trials at a 2% sample, mean ROC AUC over the 30 folds. The marginal effect of
 each choice, averaged over the trials that used it:
 
 | Choice | Value | Mean AUC | Trials |
@@ -274,12 +274,13 @@ costs about 1.5 AUC points, the largest single effect in the search. The monthly
 per-character block and the location block both help, by about 0.7 and 0.4 points
 respectively. The Gini coefficient does not: it is the one feature block the
 search says to leave off, which matches the earlier measurement that it adds
-nothing over the rarity and zone-level columns while costing 1.4 s of the 1.6 s
-location block.
+nothing over the rarity and zone-level columns while costing most of the location
+block's runtime.
 
-The class-level block is exactly neutral, which is what a feature that is
-constant within a class-month should look like: it cannot separate characters
-that share a class.
+The class-level block is exactly neutral at this sample size, which is what a
+feature that is constant within a class-month should look like: it cannot
+separate characters that share a class. The `gaps` stage, run later at 10%,
+found a small positive effect (+0.0014), so it is kept.
 
 One caveat on the sample. Zone rarity is `log(N / n_v)` over the characters in
 the sample, so at 2% it is computed over roughly 750 characters instead of
@@ -331,6 +332,49 @@ The 0.019 AUC that `char` appeared to carry was account age. Once tenure is
 explicit, the id adds nothing and dropping it is marginally better. That is the
 right outcome: an id is not a feature, and a model that leans on one is relying
 on an artefact of how the dataset was numbered.
+
+### What the later stages found
+
+The `gaps` stage re-tested the three feature-table choices whose 2% ranking was
+inside the noise, on an exhaustive 18-cell grid at 10%:
+
+| Choice | Marginal mean AUC |
+|---|---|
+| `session_gap` | 30 = 0.8566 · 45 = 0.8576 · **60 = 0.8585** |
+| `zone_session_gap` | **same = 0.8582** · 30 = 0.8570 · 60 = 0.8579 |
+| `use_class_features` | **on = 0.8583** · off = 0.8569 |
+
+The `structural` stage searched the post-feature-table choices with a logistic
+regression, and found two effects that matter:
+
+| Choice | Effect |
+|---|---|
+| `drop_month` | keep 0.8556 · **drop 0.8668** |
+| `drop_char` | keep 0.8619 · **drop 0.8664** |
+| `high_cardinality` | string 0.8642 · **minhash 0.8663** |
+| `logreg_C` | correlation **−0.840** with the score |
+| `cardinality_threshold` | correlation −0.021 — no effect |
+| `drop_null_fraction` | correlation +0.185 — weak |
+
+`drop_month` is the largest: `month` expands to year/month/day/total_seconds, and
+`total_seconds` is a monotone time index, so the model was reading "which fold is
+this" off it.
+
+The `capacity` stage then tuned HGB's own hyperparameters:
+
+| Choice | Best value | Correlation with score |
+|---|---|---|
+| `learning_rate` | 0.0344 | **−0.908** |
+| `min_samples_leaf` | 163 | +0.494 |
+| `max_leaf_nodes` | 54 | +0.412 |
+| `l2_regularization` | 0.0037 | +0.009 — no effect |
+
+`learning_rate` dominates, and the best value sits at the bottom of the range the
+search was given (0.02–0.3), so the optimum is probably below it. The default of
+0.1 was roughly three times too high.
+
+Two choices turned out to be flat — `cardinality_threshold` and
+`l2_regularization` — and could be dropped from the space.
 
 The next part looks at what the plan scores on data it has never seen, and at
 what it costs to run.

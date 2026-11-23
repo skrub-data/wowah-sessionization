@@ -148,7 +148,7 @@ Two details make that practical:
 ### A quick exploration of the dataset
 We begin by loading the historical dataset with all the timestamps. To keep the
 examples fast, this post uses the year 2008 (about 10.8M rows, 37k characters); the
-repository can also run everything on the full 2006-2009 dataset (35.6M rows, 90k
+repository can also run everything on the full 2006-2009 dataset (36.5M rows, 90k
 characters). We use `.scan_parquet()` because it returns a `LazyFrame`, which
 we want to use as much as possible through the code for query optimization. 
 
