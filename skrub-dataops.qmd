@@ -18,16 +18,17 @@ template-partials:
 
 Machine learning on tabular data
 
-![](images/table_vectorizer.png){width="70%" style="margin-bottom: -1rem;"}
+![](images/table_vectorizer.png){width="70%" style="margin-bottom: -1rem;" fig-align="center"}
 
-![](images/tabular_pipeline.png){width="60%" style="margin-bottom: -1rem;"}
+![](images/tabular_pipeline.png){width="60%" style="margin-bottom: -1rem;" fig-align="center"}
 
-::: {.incremental}
+::: {.fragment}
 - [skrub-data.org](https://skrub-data.org)
 - This talk: the [skrub DataOps](https://skrub-data.org/stable/data_ops.html) framework.
 :::
 
 # Act 1: skrub Data Ops
+
 
 ## {.smaller}
 
@@ -194,43 +195,7 @@ pred = X_join.skb.apply(
 ).skb.apply(LogisticRegression(), y=y)
 ```
 
-
-
 :::
-
-
-
-::: {.fragment}
-
-Cross-validate
-
-```{.python code-line-numbers="|2|"}
-pred.skb.cross_validate(
-    environment={"data_path": "historical_data.csv", "hist_path": "archive.csv"}
-)
-```
-
-:::
-
-
-::: {.fragment}
-
-
-Make a "learner" (object with `fit()` & `predict()`)
-
-```{.python code-line-numbers="|2|3|5|6|"}
-learner = pred.skb.make_learner(
-).fit(
-    environment={"data_path": "historical_data.csv", "hist_path": "archive.csv"}
-)
-learner.predict(
-    environment={"data_path": "new_data.csv", "hist_path": "archive.csv"}
-)
-```
-
-
-:::
-
 
 
 :::
@@ -309,7 +274,7 @@ learner.predict(
 
 # Act 2: Dataset and problem
 
-![](images/World_of_Warcraft.png)
+![](images/wow-avenueq.png)
 
 ## What are we here for?  {.smaller}
 - **The dataset**: World of Warcraft Avatar history Dataset [^1]
@@ -550,13 +515,77 @@ measure we decide to implement, so we can only try to **predict player behavior*
 
 # Act 3: The implementation
 
+![](images/Galaxy_brain.jpg)
+
+
 ## What is this section for?
 
 - The implementation revealed a number of **pain points** that Data Ops simplified.
 - We focus on some of the main issues without discussing the entire implementation here.
 
+## Pain point 1 — Time-aware cross-validation {.smaller auto-animate="true"}
+![](images/user_months_plot.png)
 
-## Pain point 1 - Data preparation is part of the pipeline {.smaller}
+## Pain point 1 — Time-aware cross-validation {.smaller auto-animate="true"}
+
+::: {.columns}
+
+::: {.column}
+
+- Features and session aggregations must only use **data available at scoring time**
+- Off-the-shelf `TimeSeriesSplit` assumes folds of **equal size**
+- Here the number of (character, month) rows **changes every month** — folds are unbalanced by nature
+
+:::
+
+::: {.column}
+
+![](images/user_months_plot.png)
+
+:::
+
+:::
+
+## Pain point 1 — Time-aware cross-validation {.smaller auto-animate="true"}
+
+
+::: {.columns}
+
+::: {.column width=45%}
+
+
+- Data Ops natively support  **custom splitters** for splitting data in the DAG.
+- Custom splitters can use custom dataframe logic to select the samples
+- Splitters plugged in `skb.mark_as_X(cv=Splitter())` are honored by 
+`cross_validate`, `train_test_split`, randomized search, and scoring
+
+:::
+
+::: {.column width=55%}
+
+
+```{.python code-line-numbers="|1-2|6-9|10-13|"}
+class Splitter:
+    def split(self, X, y=None):
+        ...
+        for split_point in ...:
+            test_month = pl.Series([split_point]).dt.offset_by("1mo").first()
+            train_idx = (
+                X.with_row_index("idx")
+                .filter(pl.col("month") <= split_point)["idx"]
+            )
+            test_idx = (
+                X.with_row_index("idx")
+                .filter(pl.col("month") == test_month)["idx"]
+            )
+```
+
+:::
+
+:::
+
+
+## Pain point 2 - Data preparation is part of the pipeline {.smaller}
 
 - Data is not clean: heartbeats are in **text files** scattered over **hundreds of folders**
 rather than in a more manageable format. 
@@ -565,7 +594,7 @@ rather than in a more manageable format.
 **including the pre-processing**.
 
 
-## Pain point 1 - Data preparation is part of the pipeline {.smaller}
+## Pain point 2 - Data preparation is part of the pipeline {.smaller}
 
 
 ::: {.columns}
@@ -626,67 +655,6 @@ predictions = learner.predict(
 ```
 
 :::
-
-:::
-
-:::
-
-## Pain point 2 — Time-aware cross-validation {.smaller auto-animate="true"}
-![](images/user_months_plot.png)
-
-## Pain point 2 — Time-aware cross-validation {.smaller auto-animate="true"}
-
-::: {.columns}
-
-::: {.column}
-
-- Features and session aggregations must only use **data available at scoring time**
-- Off-the-shelf `TimeSeriesSplit` assumes folds of **equal size**
-- Here the number of (character, month) rows **changes every month** — folds are unbalanced by nature
-
-:::
-
-::: {.column}
-
-![](images/user_months_plot.png)
-
-:::
-
-:::
-
-## Pain point 2 — Time-aware cross-validation {.smaller auto-animate="true"}
-
-
-::: {.columns}
-
-::: {.column width=45%}
-
-
-- Data Ops natively support  **custom splitters** for splitting data in the DAG.
-- Custom splitters can use custom dataframe logic to select the samples
-- Splitters plugged in `skb.mark_as_X(cv=Splitter())` are honored by 
-`cross_validate`, `train_test_split`, randomized search, and scoring
-
-:::
-
-::: {.column width=55%}
-
-
-```{.python code-line-numbers="|1-2|6-9|10-13|"}
-class Splitter:
-    def split(self, X, y=None):
-        ...
-        for split_point in ...:
-            test_month = pl.Series([split_point]).dt.offset_by("1mo").first()
-            train_idx = (
-                X.with_row_index("idx")
-                .filter(pl.col("month") <= split_point)["idx"]
-            )
-            test_idx = (
-                X.with_row_index("idx")
-                .filter(pl.col("month") == test_month)["idx"]
-            )
-```
 
 :::
 
