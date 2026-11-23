@@ -767,15 +767,68 @@ def evaluate(
     return results, data_op
 
 
-def predict_unseen(load_fraction=0.1, frozen=None, source="parquet"):
+MODEL_PATH = Path(__file__).parent / "reports" / "final_learner.joblib"
+
+
+def fit_final(frozen, load_fraction=1.0, source="parquet", path=MODEL_PATH):
     """
-    Fit on the historical files, then score November 2008 from the unseen ones.
+    Fit the plan on the whole historical window and save the learner.
+
+    `load_fraction=1.0` keeps every character, which is the point of the final
+    fit: the searches ran on a sample, this does not.
+
+    The learner is saved with joblib so that scoring does not have to refit.
+    """
+    import joblib
+
+    data_op = make_data_op(
+        load_fraction=load_fraction, stage="none", frozen=frozen, source=source
+    )
+    learner = data_op.skb.make_learner()
+    learner.fit(get_env("train", source=source))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(learner, path)
+    print(f"saved learner to {path}")
+    return learner
+
+
+def score_unseen(path=MODEL_PATH, source="parquet"):
+    """
+    Load the saved learner and score November 2008 from the unseen window.
 
     Only November is scored: December's target is `churn` in January 2009, and
     the dataset stops on January 10th, so a character who played later that
     month is recorded as absent and the label is wrong for them.
 
-    Returns a (char, month, churn_next_pred) table.
+    Returns a (char, month, churn_next_pred, churn_next) table, so the
+    predictions can be scored against the labels.
+    """
+    import joblib
+
+    learner = joblib.load(path)
+    unseen_env = get_env("unseen", source=source)
+    predictions = learner.predict(unseen_env)
+
+    # Rebuild the (char, month, churn_next) rows for the same window. The plan
+    # is deterministic, so the row order matches the predictions.
+    data_op, X, y = make_data_op(
+        load_fraction=1.0, return_x=True, stage="none", source=source
+    )
+    x_unseen = X.skb.eval(unseen_env)
+    y_unseen = y.skb.eval(unseen_env)
+    result = x_unseen.with_columns(
+        pl.Series("churn_next_pred", predictions),
+        pl.Series("churn_next", y_unseen),
+    ).filter(pl.col("month") == datetime(2008, 11, 1))
+    return result.sort(["month", "char"])
+
+
+def predict_unseen(load_fraction=0.1, frozen=None, source="parquet"):
+    """
+    Fit on the historical files, then score November 2008 from the unseen ones.
+
+    Kept for the sampled, in-memory path. `fit_final` + `score_unseen` is the
+    full-data equivalent that saves the learner.
     """
     data_op, X, _y = make_data_op(
         load_fraction=load_fraction, return_x=True, frozen=frozen, source=source
@@ -802,13 +855,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--env",
-        choices=[*ENV_KINDS, "predict-unseen"],
+        choices=[*ENV_KINDS, "predict-unseen", "fit-final", "score-unseen"],
         default=DEFAULT_ENV_KIND,
         help=(
-            "'train' evaluates the plan on the historical files (through "
-            "October 2008), 'unseen' evaluates it on the held-out files "
-            "(October 2008 - January 2009), 'predict-unseen' fits on 'train' "
-            "and predicts November 2008 from the held-out files"
+            "'train' evaluates the plan on the historical files, 'unseen' "
+            "evaluates it on the held-out files, 'predict-unseen' fits on "
+            "'train' and predicts November 2008, 'fit-final' fits on every "
+            "character and saves the learner, 'score-unseen' loads that "
+            "learner and scores November 2008"
         ),
     )
     parser.add_argument(
@@ -874,7 +928,16 @@ if __name__ == "__main__":
             if isinstance(frozen.get(key), list):
                 frozen[key] = tuple(frozen[key])
 
-    if args.env == "predict-unseen":
+    if args.env == "fit-final":
+        fit_final(frozen, load_fraction=args.fraction, source=args.source)
+    elif args.env == "score-unseen":
+        result = score_unseen(source=args.source)
+        from sklearn.metrics import roc_auc_score
+
+        auc = roc_auc_score(result["churn_next"].to_numpy(), result["churn_next_pred"])
+        print(f"November 2008: {len(result)} rows, ROC AUC {auc:.4f}")
+        print(result.head(10))
+    elif args.env == "predict-unseen":
         predictions = predict_unseen(load_fraction=args.fraction, frozen=frozen)
         print(predictions)
     elif args.search:
