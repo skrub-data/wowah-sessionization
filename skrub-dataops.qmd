@@ -311,7 +311,7 @@ and `predict()` on unseen data.
 
 # Act 2: Dataset and problem
 
-![](images/wow-avenueq.png)
+![](images/Leeroy-Jenkins-Meme.webp)
 
 ## What are we here for?  {.smaller}
 - **The dataset**: World of Warcraft Avatar history Dataset [^1]
