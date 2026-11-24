@@ -204,7 +204,7 @@ How do we deal with all that?
 
 Declare the pipeline
 
-```{.python code-line-numbers="1-2|4|5-6|8|11-15"}
+```{.python code-line-numbers="1-2|4|6-7|9|11-15"}
 data_path = skrub.var("data_path")
 data = data_path.skb.apply_func(pd.read_csv)
 
@@ -495,36 +495,7 @@ We want to model player behavior by measuring statistics about **playing session
 - How long do the sessions last? 
 - Does the player have a consistent schedule?
 
-`skrub.SessionEncoder` turns heartbeats into **sessions**:
-
-## Choosing the session gap {.smaller}
-
-::: {.columns}
-
-::: {.column width="62%"}
-
-![](images/session_gap_example.png)
-
-:::
-
-::: {.column width="38%"}
-
-Depending on the session gap, the same heartbeats can lead to different sessions:
-
-- **15 min** → 3 sessions
-- **30 min** → 2 sessions
-- **60 min** → 1 session
-
-
-::: {.callout-important}
-
-Every feature down the line depends on the session gap. 
-
-:::
-
-:::
-
-:::
+`skrub.SessionEncoder` turns heartbeats into **sessions**
 
 ## From sessions to one row {.smaller}
 
@@ -573,6 +544,22 @@ Every feature down the line depends on the session gap.
 
 :::
 
+
+::: {.fragment}
+
+
+::: {.callout-important}
+
+Every feature down the line depends on the session gap. 
+
+:::
+
+
+:::
+
+
+
+
 ## Feature engineering {.smaller}
 
 - Monthly aggregates 
@@ -586,8 +573,7 @@ Every feature down the line depends on the session gap.
 ## Model selection
 
 - First pass with `LogisticRegression` to decide the architecture of the pipeline
-- Secont pass with `HistGradientBoostingClassifier` (HGBC)
-- Month-by-month time-aware CV
+- Second pass with `HistGradientBoostingClassifier` (HGBC)
 - Data Ops are used to tune **hyperparameters** and **architectural decisions**
 
 
@@ -632,7 +618,7 @@ def make_data_op():
         build_churn_dataset
     ).skb.set_name("query")
     
-    X = user_month["char", "month"].skb.mark_as_X(...)
+    X = user_month["char", "month"].skb.mark_as_X(Splitter())
     y = user_month["churn_next"].skb.mark_as_y()
 
     feature_table = historical_data.skb.apply_func(build_feature_table)
@@ -656,7 +642,7 @@ def make_data_op():
 
 **Exporting the learner**
 
-```{.python code-line-numbers="|4,8|5-7|10,14|11-13|"}
+```{.python code-line-numbers="|3|4,8|5-7|10,14|11-13|"}
 ...
 data_op, X = make_data_op()
 learner = data_op.skb.make_learner()
@@ -767,15 +753,13 @@ do.groupby("region")["revenue"].agg(skrub.choose_from(["mean", "sum", "max"]))
 <pre style="font-size: 0.55em; background-color: #f5f5f5; padding: 0.6em 1em; margin: 0.8em 0;"><code style="background-color: inherit;">X_enc = X.skb.apply_func(build_feature_table,
 <span style="color: #c00; background-color: #fff0f0;">-    session_gap=<span style="background-color: #f9a0a0;">30</span>,</span>
 <span style="color: #080; background-color: #f0fff0;">+    session_gap=<span style="background-color: #9be99b;">skrub.choose_from([30, 45, 60])</span>,</span>
- )
- pred = X_enc.skb.apply(HGBC(), y=y)</code></pre>
+ )</code></pre>
 <ul style="font-size: 0.8em;">
 <li>Tune data pipeline decisions, not only hyperparameters</li>
 </ul>
 <pre style="font-size: 0.55em; background-color: #f5f5f5; padding: 0.6em 1em; margin: 0.8em 0;"><code style="background-color: inherit;">X_enc = X.skb.apply_func(build_feature_table,
 <span style="color: #080; background-color: #f0fff0;">+    insert_additional_features=<span style="background-color: #9be99b;">skrub.choose_bool()</span>,</span>
- )
- pred = X_enc.skb.apply(HGBC(), y=y)</code></pre>
+ )</code></pre>
 ```
 
 
@@ -783,17 +767,16 @@ do.groupby("region")["revenue"].agg(skrub.choose_from(["mean", "sum", "max"]))
 
 ::: {.incremental}
 
-- **With DataOps** choices can be dropped inline, where the value is used — `choose_from`, `choose_bool`, `choose_float(log=True)`
 - One call to `skb.make_randomized_search(backend="optuna", ...)` turns the whole DAG into a search 
-- skrub integrates and **calls Optuna** directly
-- Then, use the *Optuna dashboard* to navigate the results
+- skrub integrates and [**calls Optuna**]{.emph} directly
+- Then, use the [**Optuna dashboard**]{.emph} to navigate the results
 
 :::
 
 ## Pain point 4 - Debugging and inspecting a pipeline 1/2
 - Inspecting a regular pipeline is complex and requires **programmatic access**
 - The result of intermediate steps is hard to access without re-executing everything
-- Once deployed, it is hard to maintain a trained model ("why was this step needed?", 
+- Once deployed, it is hard to **maintain a trained model** ("why was this step needed?", 
 "where is the source code?")
 
 ## Pain point 4 - Debugging and inspecting a pipeline 2/2
@@ -801,9 +784,8 @@ do.groupby("region")["revenue"].agg(skrub.choose_from(["mean", "sum", "max"]))
 [Data Ops execution report](reports/execution_report/index.html){target="_blank"}
 
 - Data Ops reports provide rich information about each node
-- The source code used to generate a Data Op is bundled with it
+- The source code used to generate the Data Op can be retrieved from it 
 - When a preview or environment is provided, intermediate results can be shown
-
 
 
 ## Pain point 5 — The Need for Caching 1/2 {.smaller}

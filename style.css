@@ -69,13 +69,16 @@
 }
 
 /* The first code step is the un-cloned block inside the .decl-pipeline
-   fragment; the following steps are the fragment clones Quarto's
-   line-highlight plugin creates for each `code-line-numbers` step. */
+   fragment. Quarto's line-highlight plugin clones that <code> block once per
+   step and appends the clones as sibling <code> elements, so match them by
+   position instead of by line number: 2 is the second step, and so on.
+   That way editing the code block's line numbers cannot desynchronise the
+   graph. */
 .reveal section:has(.decl-pipeline.visible) .graph-reveal .g-step-1,
-.reveal section:has([data-code-line-numbers="4"].visible) .graph-reveal .g-step-2,
-.reveal section:has([data-code-line-numbers="5-6"].visible) .graph-reveal .g-step-3,
-.reveal section:has([data-code-line-numbers="8"].visible) .graph-reveal .g-step-4,
-.reveal section:has([data-code-line-numbers="11-15"].visible) .graph-reveal .g-step-5 {
+.reveal section:has(.decl-pipeline pre > code:nth-of-type(2).visible) .graph-reveal .g-step-2,
+.reveal section:has(.decl-pipeline pre > code:nth-of-type(3).visible) .graph-reveal .g-step-3,
+.reveal section:has(.decl-pipeline pre > code:nth-of-type(4).visible) .graph-reveal .g-step-4,
+.reveal section:has(.decl-pipeline pre > code:nth-of-type(5).visible) .graph-reveal .g-step-5 {
   opacity: 1;
 }
 

@@ -43,28 +43,73 @@ IMAGES = ROOT / "images"
 
 # The fenced block that follows "Declare the pipeline" on the slide.
 BLOCK = re.compile(
-    r"Declare the pipeline\s*\n+```\{\.python[^}]*\}\n(.*?)\n```", re.DOTALL
+    r"Declare the pipeline\s*\n+```\{\.python([^}]*)\}\n(.*?)\n```", re.DOTALL
 )
+LINE_NUMBERS = re.compile(r'code-line-numbers="([^"]*)"')
 
 # Cumulative stages, aligned with the slide's code-line-numbers steps:
-# "1-2|4|5-6|8|11-15".  Each stage lists the nodes revealed at that step;
+# "1-2|4|6-7|9|11-15". Each stage lists the nodes revealed at that step;
 # edges are added automatically once both endpoints are visible.
 STAGES = [
     ["node_0", "node_1"],  # 1-2    data_path -> read_csv
     ["node_3", "node_4"],  # 4      hist_path -> read_csv
-    ["node_2", "node_7"],  # 5-6    X.drop / y["target"]
-    ["node_5"],  # 8      X.merge(hist, ...)
+    ["node_2", "node_7"],  # 6-7    X.drop / y["target"]
+    ["node_5"],  # 9      X.merge(hist, ...)
     ["node_6", "node_8"],  # 11-15  StandardScaler -> LogisticRegression
 ]
 
 
-def pipeline_code() -> str:
+def pipeline_block() -> tuple[str, str]:
     match = BLOCK.search(QMD.read_text(encoding="utf-8"))
     if match is None:
         raise SystemExit(
             f"{QMD}: could not find the 'Declare the pipeline' code block"
         )
-    return match.group(1)
+    return match.group(1), match.group(2)
+
+
+def parse_step(step: str) -> list[int]:
+    lines: list[int] = []
+    for part in step.split(","):
+        first, _, last = part.partition("-")
+        lines.extend(range(int(first), int(last or first) + 1))
+    return lines
+
+
+def highlight_steps(attrs: str) -> list[list[int]]:
+    match = LINE_NUMBERS.search(attrs)
+    if match is None:
+        raise SystemExit(f"{QMD}: the pipeline block has no code-line-numbers")
+    raw = match.group(1)
+    steps = raw.split("|")
+    if any(not step.strip() for step in steps):
+        raise SystemExit(
+            f"{QMD}: code-line-numbers={raw!r} has an empty step; "
+            "drop the leading/trailing '|'"
+        )
+    return [parse_step(step) for step in steps]
+
+
+def check_highlight(code: str, steps: list[list[int]]) -> None:
+    """Catch line ranges that drifted from the code block they refer to."""
+    if len(steps) != len(STAGES):
+        raise SystemExit(
+            f"{QMD}: {len(steps)} highlight steps but {len(STAGES)} graph "
+            "stages; update STAGES in this script"
+        )
+    code_lines = code.splitlines()
+    for index, lines in enumerate(steps, start=1):
+        for line in lines:
+            if not 1 <= line <= len(code_lines):
+                raise SystemExit(
+                    f"{QMD}: step {index} highlights line {line}, but the "
+                    f"code block has {len(code_lines)} lines"
+                )
+            if not code_lines[line - 1].strip():
+                raise SystemExit(
+                    f"{QMD}: step {index} highlights the blank line {line}; "
+                    "adjust code-line-numbers"
+                )
 
 
 def draw_graph(code: str) -> bytes:
@@ -104,7 +149,10 @@ def write_svg(path: Path, root: ET.Element) -> None:
 
 
 def main() -> None:
-    raw_svg = draw_graph(pipeline_code()).decode("utf-8")
+    attrs, code = pipeline_block()
+    check_highlight(code, highlight_steps(attrs))
+
+    raw_svg = draw_graph(code).decode("utf-8")
     root = ET.fromstring(raw_svg)
     graph = next(el for el in root if local_name(el.tag) == "g")
 
