@@ -11,6 +11,20 @@ slide-number: true
 template-partials:
     - title-slide.html
 ---
+## `whoami`
+
+- Product engineer at Probabl for the past month
+- Before that, research engineer at Inria developing skrub
+
+
+::: {.fragment}
+
+Fun fact:
+
+- Moved from Italy to the south of France and then to Paris because I don't like
+the sea and the sun. 
+
+:::
 
 
 
@@ -26,6 +40,21 @@ Machine learning on tabular data
 - [skrub-data.org](https://skrub-data.org)
 - This talk: the [skrub DataOps](https://skrub-data.org/stable/data_ops.html) framework.
 :::
+
+## Roadmap for the presentation
+
+1. skrub Data Ops: what are they? 
+2. The dataset and the problem
+3. The implementation and how Data Ops helped
+
+
+::: {.fragment}
+
+Libraries are even more important in the era of agents 🤖
+
+:::
+
+
 
 # Act 1: skrub Data Ops
 
@@ -153,7 +182,7 @@ estimator.predict(X_new)</code></pre>
 ## 
 To build a ML pipeline, we need to:
 
-- **preprocess the data**, perform **feature engineering**, (**train a model**) ... 
+- [**preprocess the data**]{.emph}, perform [**feature engineering**]{.emph}, [**train a model**]{.emph} ... 
 - with [**multi-source input**]{.emph} ... 
 - so we need to [**learn a state**]{style="color: #1a5a8a; font-weight: bold;"}... 
 - while we [**evaluate the predictive performance**]{style="color: #1a5a8a; font-weight: bold;"}... 
@@ -161,16 +190,8 @@ To build a ML pipeline, we need to:
 
 How do we deal with all that? 
 
-## With Data Ops... {.smaller}
 
-- Cross-validate without [**data leaks**]{style="color: #1a5a8a; font-weight: bold;"}: `fit()` on training
-and `predict()` on unseen data. 
-- Perform [**problem-specific data processing**]{.emph} and data wrangling with sample filtering, joins and aggregations, multiple inputs and dynamic arguments.
-- [**Tune the architecture of the pipeline**]{style="color: #1a5a8a; font-weight: bold;"} with hyperparameter tuning and validation scores.
-- Replay on [**new inputs**]{style="color: #1a5a8a; font-weight: bold;"}.
-- [**Inspect**]{.emph} the pipeline step-by-step, [**persist**]{.emph} the source code that generates a model.
-
-## Basic example {.smaller auto-animate="true"}
+## Data Ops: a basic example {.smaller auto-animate="true"}
 
 
 ::: {.columns}
@@ -183,16 +204,22 @@ and `predict()` on unseen data.
 
 Declare the pipeline
 
-```{.python code-line-numbers="|1-2|3|4-5|6|7-9|"}
+```{.python code-line-numbers="|1-2|4|5-6|8|11-15|"}
 data_path = skrub.var("data_path")
 data = data_path.skb.apply_func(pd.read_csv)
+
 hist = skrub.var("hist_path").skb.apply_func(pd.read_csv)
-X = data.drop(columns="target", errors="ignore").skb.mark_as_X()
+
+X = data.drop(...).skb.mark_as_X()
 y = data["target"].skb.mark_as_y()
+
 X_join = X.merge(hist, on="id", how="left")
+
 pred = X_join.skb.apply(
     StandardScaler(), cols=s.numeric()
-).skb.apply(LogisticRegression(), y=y)
+).skb.apply(
+    LogisticRegression(), y=y
+)
 ```
 
 :::
@@ -215,7 +242,7 @@ pred = X_join.skb.apply(
 :::
 
 
-## Basic example {.smaller auto-animate="true"}
+## Training and persisting the Data Ops {.smaller auto-animate="true"}
 
 
 ::: {.columns}
@@ -272,6 +299,16 @@ learner.predict(
 
 :::
 
+
+## With Data Ops... {.smaller}
+
+- Cross-validate without [**data leaks**]{style="color: #1a5a8a; font-weight: bold;"}: `fit()` on training
+and `predict()` on unseen data. 
+- Perform [**problem-specific data processing**]{.emph} and data wrangling with sample filtering, joins and aggregations, multiple inputs and dynamic arguments.
+- [**Tune the architecture of the pipeline**]{style="color: #1a5a8a; font-weight: bold;"} with hyperparameter tuning and validation scores.
+- Replay on [**new inputs**]{style="color: #1a5a8a; font-weight: bold;"}.
+- [**Inspect**]{.emph} the pipeline step-by-step, [**read**]{.emph} the source code that generates a model.
+
 # Act 2: Dataset and problem
 
 ![](images/wow-avenueq.png)
@@ -279,7 +316,6 @@ learner.predict(
 ## What are we here for?  {.smaller}
 - **The dataset**: World of Warcraft Avatar history Dataset [^1]
   - World of Warcraft is a **subscription-based** online videogame.
-  - The dataset collects player activity over 2005-2009.
 
 
 ::: {.fragment}
@@ -287,6 +323,8 @@ learner.predict(
 
 - **The problem**: Some players eventually stop playing, and thus stop paying
 their subscription.
+- On a given month, we want to enact some kind of **policy** on players at risk to stop 
+them from leaving.
 
 ::: {.callout-important}
 
@@ -303,8 +341,6 @@ month M and on month M+1.
 ::: {.fragment}
 
 - Our "unit of analysis" is a (player character, month) pair. 
-- On month M, we want to enact some kind of policy on players at risk to stop 
-them from leaving.
 
 
 :::
@@ -320,7 +356,7 @@ them from leaving.
 
 - World of Warcraft (WoW) is MMORPG released in 2004 by
 Blizzard Entertainment. 
-- Players create **character avatars** to navigate the open game world
+- Players create **character avatars** to explore the open game world
 and perform various activities. 
 - Players level up their characters to make them more powerful. 
 - A single player may have **multiple avatars**. 
@@ -336,6 +372,16 @@ and perform various activities.
 :::
 
 
+## Caveats
+
+::: {.incremental}
+
+- While we are interested in **players**, we have information only about their 
+**avatars**. A player may stop playing with an avatar, but keep paying the subscription. 
+- As this is past data, we cannot actually evaluate the effectiveness of whatever
+measure we decide to implement, so we can only try to **predict player behavior**. 
+
+:::
 
 ## World of Warcraft Avatar history {.smaller}
 
@@ -390,16 +436,60 @@ Persistent_Storage = {
 
 :::
 
-## The dataset: gap between heartbeats {.smaller}
-![](reports/exploration/heartbeat_gaps.png)
+## Time-aware cross-validation {.smaller auto-animate="true"}
+![](images/user_months_plot.png)
+
+## Time-aware cross-validation {.smaller auto-animate="true"}
+
+::: {.columns}
+
+::: {.column}
+
+- Features and session aggregations must only use **data available at scoring time**
+- Off-the-shelf `TimeSeriesSplit` assumes folds of **equal size**
+- Here the number of (character, month) rows **changes every month** — folds are unbalanced by nature
+
+:::
+
+::: {.column}
+
+![](images/user_months_plot.png)
+
+:::
+
+:::
+
+## Time-aware cross-validation {.smaller auto-animate="true"}
+
+- A splitter that uses **custom dataframe logic** is required to handle the situation.
+- Custom splitters can use custom dataframe logic to select the samples
+- Splitters plugged in `skb.mark_as_X(cv=Splitter())` are honored by 
+`cross_validate`, `train_test_split`, randomized search, and scoring
+
+
+```{.python code-line-numbers="|1-2|6-9|10-13|"}
+class Splitter:
+    def split(self, X, y=None):
+        ...
+        for split_point in ...:
+            test_month = pl.Series([split_point]).dt.offset_by("1mo").first()
+            train_idx = (
+                X.with_row_index("idx")
+                .filter(pl.col("month") <= split_point)["idx"]
+            )
+            test_idx = (
+                X.with_row_index("idx")
+                .filter(pl.col("month") == test_month)["idx"]
+            )
+```
 
 ## Feature engineering: defining sessions {.smaller}
 
 We want to model player behavior by measuring statistics about **playing sessions**. 
 
 - How many sessions does a player have in a month?
-- How long do they last? 
-- Do they have a consistent duration? 
+- How long do the sessions last? 
+- Does the player have a consistent schedule?
 
 `skrub.SessionEncoder` turns heartbeats into **sessions**:
 
@@ -479,16 +569,6 @@ Every feature down the line depends on the session gap.
 
 :::
 
-::: {.notes}
-`add_session_features` is the group_by that turns the left table into the right one;
-the row is keyed (char, month) and the March sessions feed April's row. Two details
-worth saying out loud: the std is computed on microseconds because polars cannot take
-the std of a Duration column, and `monthly_avg_session_start` / `_end` are means of
-timestamps across the whole month, so they only carry a time-of-day signal, not a
-date. The number of sessions, the total and the average duration carry most of the
-signal.
-:::
-
 ## Feature engineering {.smaller}
 
 - Monthly aggregates 
@@ -501,16 +581,10 @@ signal.
 
 ## Model selection
 
-- `HistGradientBoostingClassifier` (HGBC) as the evaluation model
+- First pass with `LogisticRegression` to decide the architecture of the pipeline
+- Secont pass with `HistGradientBoostingClassifier` (HGBC)
 - Month-by-month time-aware CV
 - Data Ops are used to tune **hyperparameters** and **architectural decisions**
-
-
-## Caveats
-- While we are interested in **players**, we have information only about their 
-**avatars**. A player may stop playing with an avatar, but keep paying the subscription. 
-- As this is past data, we cannot actually evaluate the effectiveness of whatever
-measure we decide to implement, so we can only try to **predict player behavior**. 
 
 
 # Act 3: The implementation
@@ -521,80 +595,22 @@ measure we decide to implement, so we can only try to **predict player behavior*
 ## What is this section for?
 
 - The implementation revealed a number of **pain points** that Data Ops simplified.
-- We focus on some of the main issues without discussing the entire implementation here.
-
-## Pain point 1 — Time-aware cross-validation {.smaller auto-animate="true"}
-![](images/user_months_plot.png)
-
-## Pain point 1 — Time-aware cross-validation {.smaller auto-animate="true"}
-
-::: {.columns}
-
-::: {.column}
-
-- Features and session aggregations must only use **data available at scoring time**
-- Off-the-shelf `TimeSeriesSplit` assumes folds of **equal size**
-- Here the number of (character, month) rows **changes every month** — folds are unbalanced by nature
-
-:::
-
-::: {.column}
-
-![](images/user_months_plot.png)
-
-:::
-
-:::
-
-## Pain point 1 — Time-aware cross-validation {.smaller auto-animate="true"}
+- We focus on some of the main issues without discussing the entire implementation.
 
 
-::: {.columns}
 
-::: {.column width=45%}
+## Pain point 1 - Data preparation is part of the pipeline {.smaller}
 
-
-- Data Ops natively support  **custom splitters** for splitting data in the DAG.
-- Custom splitters can use custom dataframe logic to select the samples
-- Splitters plugged in `skb.mark_as_X(cv=Splitter())` are honored by 
-`cross_validate`, `train_test_split`, randomized search, and scoring
-
-:::
-
-::: {.column width=55%}
-
-
-```{.python code-line-numbers="|1-2|6-9|10-13|"}
-class Splitter:
-    def split(self, X, y=None):
-        ...
-        for split_point in ...:
-            test_month = pl.Series([split_point]).dt.offset_by("1mo").first()
-            train_idx = (
-                X.with_row_index("idx")
-                .filter(pl.col("month") <= split_point)["idx"]
-            )
-            test_idx = (
-                X.with_row_index("idx")
-                .filter(pl.col("month") == test_month)["idx"]
-            )
-```
-
-:::
-
-:::
-
-
-## Pain point 2 - Data preparation is part of the pipeline {.smaller}
-
+::: {.incremental}
 - Data is not clean: heartbeats are in **text files** scattered over **hundreds of folders**
 rather than in a more manageable format. 
 - Boilerplate code and pre-processing scripts are **brittle** and **prone to errors**.
 - Once transformations are learned, they need to be **replayed on new data**, 
 **including the pre-processing**.
 
+:::
 
-## Pain point 2 - Data preparation is part of the pipeline {.smaller}
+## Pain point 1 - Data preparation is part of the pipeline {.smaller}
 
 
 ::: {.columns}
@@ -649,8 +665,8 @@ learner.fit(
 predictions = learner.predict(
     environment={
         "raw_files": "latest_month/"
-        }
-    )
+    }
+)
 ...
 ```
 
@@ -661,35 +677,46 @@ predictions = learner.predict(
 :::
 
 
-## Pain point 3 — Tuning the architecture of the pipeline, not just model knobs {.smaller auto-animate="true"}
+## Pain point 3 - Treating pipeline decisions like hyperparameters {.smaller auto-animate="true"}
 
-- Model choices are not limited to model hyperparameters: `session_gap` (15/30/60 min), include location features?, which lags?
+::: {.incremental}
+
+- Model choices are not limited to model hyperparameters: `session_gap` (30/45/60 min), include location features?, which lags?
 - These are [**data pipeline decisions**]{.emph}, with big performance and runtime impact
 - Pipeline decisions [**modify the pipeline itself**]{.emph}, and regular hyperparameter tuning does not work
 
-## Pain point 3 — Tuning the architecture of the pipeline, not just model knobs {.smaller auto-animate="true"}
+:::
+
+## Pain point 3 - Treating pipeline decisions like hyperparameters {.smaller auto-animate="true"}
 ```{=html}
 <ul style="font-size: 0.8em;">
 <li>Replace any value with a choice:</li>
 </ul>
 <pre style="font-size: 0.55em; background-color: #f5f5f5; padding: 0.6em 1em; margin: 0.8em 0;"><code style="background-color: inherit;">X_enc = X.skb.apply_func(build_feature_table,
 <span style="color: #c00; background-color: #fff0f0;">-    session_gap=<span style="background-color: #f9a0a0;">30</span>,</span>
-<span style="color: #080; background-color: #f0fff0;">+    session_gap=<span style="background-color: #9be99b;">skrub.choose_from([15, 30, 60])</span>,</span>
+<span style="color: #080; background-color: #f0fff0;">+    session_gap=<span style="background-color: #9be99b;">skrub.choose_from([30, 45, 60])</span>,</span>
  )
  pred = X_enc.skb.apply(HGBC(), y=y)</code></pre>
 <ul style="font-size: 0.8em;">
 <li>Tune data pipeline decisions, not only hyperparameters</li>
 </ul>
 <pre style="font-size: 0.55em; background-color: #f5f5f5; padding: 0.6em 1em; margin: 0.8em 0;"><code style="background-color: inherit;">X_enc = X.skb.apply_func(build_feature_table,
-<span style="color: #080; background-color: #f0fff0;">+    additional_features=<span style="background-color: #9be99b;">skrub.choose_bool()</span>,</span>
+<span style="color: #080; background-color: #f0fff0;">+    insert_additional_features=<span style="background-color: #9be99b;">skrub.choose_bool()</span>,</span>
  )
  pred = X_enc.skb.apply(HGBC(), y=y)</code></pre>
 ```
 
 
-## Pain point 3 — Tuning the architecture of the pipeline, not just model knobs {.smaller auto-animate="true"}
+## Pain point 3 - Treating pipeline decisions like hyperparameters {.smaller auto-animate="true"}
+
+::: {.incremental}
+
 - **With DataOps** choices can be dropped inline, where the value is used — `choose_from`, `choose_bool`, `choose_float(log=True)`
 - One call to `skb.make_randomized_search(backend="optuna", ...)` turns the whole DAG into a search 
+- skrub integrates and calls Optuna directly
+- Access the Optuna dashboard to follow along the search
+
+:::
 
 ## Pain point 4 - Debugging and inspecting a pipeline
 - Inspecting a regular pipeline is complex and requires **programmatic access**
@@ -713,6 +740,7 @@ predictions = learner.predict(
 - Cross-validation **re-evaluates** the entire plan => parsing is repeated in each fold
 - We need to choose between **keeping parsing in the pipeline** and **quick iteration**
 
+::: {.fragment}
 
 ::: {.callout-warning}
 
@@ -720,10 +748,6 @@ Each CV fold parses all the heartbeats twice: **68 s** per parse, **~71 minutes*
 of parsing alone, before any feature engineering or model fitting.
 
 :::
-
-
-::: {.fragment}
-
 
 ::: {.callout-important}
 
@@ -737,8 +761,7 @@ This is exactly what we want caching for!
 ## Pain point 5 — The Need for Caching {.smaller}
 
 - Data Ops can be **cached**! 
-- Joblib caching is used to avoid repeating the same operations if no code changes
-have happened. 
+- Joblib caching can be used to save time across folds.
 
 ```python
 CACHE_DIR = Path(__file__).parent / ".skrub_cache"
@@ -751,6 +774,7 @@ skrub.set_config(cache=str(CACHE_DIR))
 | cache cold | 289 s | 1 |
 | cache warm | 213 s | 0 |
 
+In this case, ~15x speedup. 
 
 # Conclusions
 
