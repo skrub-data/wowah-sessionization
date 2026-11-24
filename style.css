@@ -9,6 +9,13 @@
   font-size: 90px;
 }
 
+/* The site link is the subtitle on the title slide and the running footer on
+   every other slide, so hide the duplicated footer there. Quarto's support
+   plugin sets display inline, hence the !important. */
+.reveal:has(#title-slide.present) > .footer.footer-default {
+  display: none !important;
+}
+
 #title-slide .title-logos {
   display: flex;
   align-items: center;

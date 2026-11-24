@@ -1,12 +1,13 @@
 ---
 title: "Skrub Data Ops: an application to player churn"
-subtitle: "[skrub-data.org](https://skrub-data.org/)"
+subtitle: "[skrub-data.org/wowah-sessionization](https://skrub-data.org/wowah-sessionization/)"
 author: "Riccardo Cappuzzo"
 institute: "Inria P16, `:probabl.`"
 format:
   revealjs:
     code-line-numbers: false
     css: style.css
+    footer: "[skrub-data.org/wowah-sessionization](https://skrub-data.org/wowah-sessionization/)"
 slide-number: true
 template-partials:
     - title-slide.html
@@ -363,7 +364,6 @@ Blizzard Entertainment.
 - Players create **character avatars** to explore the open game world
 and perform various activities. 
 - Players level up their characters to make them more powerful. 
-- A single player may have **multiple avatars**. 
 
 :::
 
@@ -389,9 +389,9 @@ measure we decide to implement, so we can only try to **predict player behavior*
 
 ## World of Warcraft Avatar history {.smaller}
 
-- ~35.6M timestamped "character is active" lines (**heartbeats**). 
-- Time range: 2005-12-31 / 2009-01-10 in the 
-**Taiwanese server**.
+- ~36M timestamped "character is active" lines (**heartbeats**). 
+- Time range: 2005-12-31 / 2009-01-10.
+
 
 ::: {.columns}
 
@@ -467,8 +467,6 @@ Persistent_Storage = {
 
 - A splitter that uses **custom dataframe logic** is required to handle the situation.
 - Custom splitters can use custom dataframe logic to select the samples
-- Splitters plugged in `skb.mark_as_X(cv=Splitter())` are honored by 
-`cross_validate`, `train_test_split`, randomized search, and scoring
 
 
 ```{.python code-line-numbers="|1-2|6-9|10-13|"}
@@ -486,6 +484,16 @@ class Splitter:
                 .filter(pl.col("month") == test_month)["idx"]
             )
 ```
+
+
+::: {.fragment}
+
+- Splitters plugged in `skb.mark_as_X(cv=Splitter())` are honored by 
+`cross_validate`, `train_test_split`, randomized search, and scoring
+
+:::
+
+
 
 ## Feature engineering: defining sessions {.smaller}
 
@@ -563,7 +571,7 @@ Every feature down the line depends on the session gap.
 ## Feature engineering {.smaller}
 
 - Monthly aggregates 
-  - Statistics by class, race, overall playerbase...
+  - Statistics by class, overall playerbase...
 - Location-based features
   - Zone rarity, where players spend their time
 - Lagged features 
@@ -609,7 +617,7 @@ rather than in a more manageable format.
 
 **Building the pipeline**
 
-```{.python code-line-numbers="|2|3|5-7|9-10|12-13|14|15|"}
+```{.python code-line-numbers="|2|3|5-7|9-10|12-15|"}
 def make_data_op():
     raw_files = skrub.var("raw_files")
     historical_data = raw_files.skb.apply_func(load)
@@ -795,13 +803,6 @@ do.groupby("region")["revenue"].agg(skrub.choose_from(["mean", "sum", "max"]))
 - We need to choose between **keeping parsing in the pipeline** and **quick iteration**
 
 ::: {.fragment}
-
-::: {.callout-warning}
-
-Each CV fold parses all the heartbeats twice: **68 s** per parse, **~71 minutes**
-of parsing alone, before any feature engineering or model fitting.
-
-:::
 
 ::: {.callout-important}
 
