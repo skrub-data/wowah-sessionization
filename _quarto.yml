@@ -5,6 +5,9 @@ project:
   # Code cells run with the project root as cwd even when the document lives in
   # a subfolder, so `data/...` paths stay identical across the whole series.
   execute-dir: project
+  # The graph on the Data Ops slide is built from the code block shown next to
+  # it, so rebuild it (and its reveal stages) before every render.
+  pre-render: python scripts/make_model_graph.py
   render:
     - "*.qmd"
     # Shared partials included by the parts in posts/; not published standalone.
