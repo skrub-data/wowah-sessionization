@@ -599,7 +599,7 @@ Every feature down the line depends on the session gap.
 
 
 
-## Pain point 1 - Data preparation is part of the pipeline {.smaller}
+## Pain point 1 - Data preparation is part of the pipeline 1/2 {.smaller}
 
 ::: {.incremental}
 - Data is not clean: heartbeats are in **text files** scattered over **hundreds of folders**
@@ -610,7 +610,7 @@ rather than in a more manageable format.
 
 :::
 
-## Pain point 1 - Data preparation is part of the pipeline {.smaller}
+## Pain point 1 - Data preparation is part of the pipeline 2/2 {.smaller}
 
 
 ::: {.columns}
@@ -677,7 +677,75 @@ predictions = learner.predict(
 :::
 
 
-## Pain point 3 - Treating pipeline decisions like hyperparameters {.smaller auto-animate="true"}
+## Pain point 2 - Hyperparameter tuning 1/2 {.smaller auto-animate="true"}
+
+Tuning hyperparameters in scikit-learn can be complex...
+
+```{.python}
+pipe = Pipeline([("dim_reduction", PCA()), ("regressor", Ridge())])
+grid = [
+    {
+        "dim_reduction": [PCA()],
+        "dim_reduction__n_components": [10, 20, 30],
+        "regressor": [Ridge()],
+        "regressor__alpha": loguniform(0.1, 10.0),
+    },
+    {
+        "dim_reduction": [SelectKBest()],
+        "dim_reduction__k": [10, 20, 30],
+        "regressor": [Ridge()],
+        "regressor__alpha": loguniform(0.1, 10.0),
+    },
+    {
+        "dim_reduction": [PCA()],
+        "dim_reduction__n_components": [10, 20, 30],
+        "regressor": [RandomForestRegressor()],
+        "regressor__n_estimators": loguniform(20, 200),
+    },
+    {
+        "dim_reduction": [SelectKBest()],
+        "dim_reduction__k": [10, 20, 30],
+        "regressor": [RandomForestRegressor()],
+        "regressor__n_estimators": loguniform(20, 200),
+    },
+]
+```
+## Pain point 2 - Hyperparameter tuning 2/2 {.smaller} 
+
+With Data Ops, you can [**define the search space with the estimator**]{.emph}:
+
+```{.python code-line-numbers="|2,6,7|4,5|"}
+dim_reduction = X.skb.apply(
+    skrub.choose_from(
+        {
+            "PCA": PCA(n_components=skrub.choose_int(10, 30)),
+            "SelectKBest": SelectKBest(k=skrub.choose_int(10, 30))
+        }, name="dim_reduction"
+    )
+)
+```
+
+
+::: {.fragment}
+
+Choices can be made about [**any part of the pipeline**]{.emph}:
+
+```{.python code-line-numbers="|6"}
+df = pd.DataFrame({
+    "region":  ["North", "North", "South", "South", "East", "East", "North", "South"],
+    "revenue": [100.0, 225.0, 70.0, 180.0, 90.0, 300.0, 50.0, 80.0],
+})
+do = skrub.var("data", df)
+do.groupby("region")["revenue"].agg(skrub.choose_from(["mean", "sum", "max"]))
+
+```
+
+:::
+
+
+
+
+## Pain point 3 - Treating pipeline decisions like hyperparameters 1/3 {.smaller auto-animate="true"}
 
 ::: {.incremental}
 
@@ -687,7 +755,7 @@ predictions = learner.predict(
 
 :::
 
-## Pain point 3 - Treating pipeline decisions like hyperparameters {.smaller auto-animate="true"}
+## Pain point 3 - Treating pipeline decisions like hyperparameters 2/3 {.smaller auto-animate="true"}
 ```{=html}
 <ul style="font-size: 0.8em;">
 <li>Replace any value with a choice:</li>
@@ -707,24 +775,24 @@ predictions = learner.predict(
 ```
 
 
-## Pain point 3 - Treating pipeline decisions like hyperparameters {.smaller auto-animate="true"}
+## Pain point 3 - Treating pipeline decisions like hyperparameters 3/3 {.smaller auto-animate="true"}
 
 ::: {.incremental}
 
 - **With DataOps** choices can be dropped inline, where the value is used — `choose_from`, `choose_bool`, `choose_float(log=True)`
 - One call to `skb.make_randomized_search(backend="optuna", ...)` turns the whole DAG into a search 
-- skrub integrates and calls Optuna directly
-- Access the Optuna dashboard to follow along the search
+- skrub integrates and **calls Optuna** directly
+- Then, use the *Optuna dashboard* to navigate the results
 
 :::
 
-## Pain point 4 - Debugging and inspecting a pipeline
+## Pain point 4 - Debugging and inspecting a pipeline 1/2
 - Inspecting a regular pipeline is complex and requires **programmatic access**
 - The result of intermediate steps is hard to access without re-executing everything
 - Once deployed, it is hard to maintain a trained model ("why was this step needed?", 
 "where is the source code?")
 
-## Pain point 4 - Debugging and inspecting a pipeline
+## Pain point 4 - Debugging and inspecting a pipeline 2/2
 
 [Data Ops execution report](reports/execution_report/index.html){target="_blank"}
 
@@ -734,7 +802,7 @@ predictions = learner.predict(
 
 
 
-## Pain point 5 — The Need for Caching {.smaller}
+## Pain point 5 — The Need for Caching 1/2 {.smaller}
 
 - Parsing is a **node of the plan**, rather than a separate pre-processing step
 - Cross-validation **re-evaluates** the entire plan => parsing is repeated in each fold
@@ -758,7 +826,7 @@ This is exactly what we want caching for!
 
 :::
 
-## Pain point 5 — The Need for Caching {.smaller}
+## Pain point 5 — The Need for Caching 2/2 {.smaller}
 
 - Data Ops can be **cached**! 
 - Joblib caching can be used to save time across folds.
