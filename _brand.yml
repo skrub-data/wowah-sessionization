@@ -1,0 +1,14 @@
+# Skrub brand: orange navbar only.
+#
+# Only Bootstrap navbar variables are set here, so the rest of the site
+# (links, headings, body text, code, and the revealjs deck) keeps the existing
+# cosmo styling. `brand` must be listed after `cosmo` to take effect:
+#   theme: [cosmo, brand]
+#
+# Colors: Skrub logo orange #f89939 on the bar, navy #12134b for text.
+defaults:
+  bootstrap:
+    defaults:
+      navbar-bg: "#f89939"
+      navbar-fg: "#12134b"
+      navbar-hl: "#12134b"

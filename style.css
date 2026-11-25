@@ -97,3 +97,103 @@
   }
 }
 
+/* Segmented progress bar (progress-sections.html).
+   Reveal's own bar is a 3px line that is invisible from the back of a room and
+   says nothing about the structure of the talk. This one is thicker, and is
+   split into one segment per act, sized by the number of slides in the act. */
+.reveal .progress-sections {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  gap: 5px;
+  height: 14px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.reveal .progress-sections .segment {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  background-color: rgba(18, 19, 75, 0.12);
+  border-radius: 2px 2px 0 0;
+  transition: background-color 0.3s ease;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.reveal .progress-sections .segment:hover {
+  background-color: rgba(18, 19, 75, 0.28);
+}
+
+.reveal .progress-sections .segment.active {
+  background-color: rgba(18, 19, 75, 0.22);
+}
+
+.reveal .progress-sections .segment-fill {
+  height: 100%;
+  width: 100%;
+  background-color: #f89939;
+  transform: scaleX(0);
+  transform-origin: 0 0;
+  transition: transform 0.45s cubic-bezier(0.26, 0.86, 0.44, 0.985);
+}
+
+/* Name of the act the current slide belongs to, left of the slide number.
+   `bottom` is chosen so its text sits on the slide number's baseline. */
+.reveal .progress-sections-label {
+  position: absolute;
+  right: 78px;
+  bottom: 26px;
+  z-index: 20;
+  max-width: 40%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 1;
+  color: rgba(18, 19, 75, 0.5);
+  pointer-events: none;
+}
+
+/* Keep the slide number, footer and menu button clear of the thicker bar.
+   These need extra specificity: Quarto's footer.css and quarto-menu.css are
+   loaded after style.css and set the same properties. */
+.reveal .slide-number.slide-number {
+  bottom: 20px;
+}
+
+.reveal .footer.footer {
+  bottom: 28px;
+}
+
+.reveal .slide-menu-button.slide-menu-button {
+  bottom: 22px;
+}
+
+/* The bar is a screen-only affordance, like reveal's own progress bar. */
+@media print {
+  .reveal .progress-sections,
+  .reveal .progress-sections-label {
+    display: none !important;
+  }
+}
+
+.reveal.overview .progress-sections,
+.reveal.overview .progress-sections-label {
+  opacity: 0;
+}
+
+/* On a narrow window the act name would run into the centred footer. */
+@media screen and (max-width: 800px) {
+  .reveal .progress-sections-label {
+    display: none;
+  }
+}
+
+

@@ -7,6 +7,11 @@ format:
   revealjs:
     code-line-numbers: false
     css: style.css
+    # The default 3px line is replaced by the segmented bar in
+    # progress-sections.html, so turn reveal's own bar off.
+    progress: false
+    # Replaces reveal's 3px progress line with one segment per act.
+    include-after-body: progress-sections.html
     footer: "[skrub-data.org/wowah-sessionization](https://skrub-data.org/wowah-sessionization/)"
 slide-number: true
 template-partials:
@@ -389,6 +394,7 @@ measure we decide to implement, so we can only try to **predict player behavior*
 
 ## World of Warcraft Avatar history {.smaller}
 
+- 132k separate text files.
 - ~36M timestamped "character is active" lines (**heartbeats**). 
 - Time range: 2005-12-31 / 2009-01-10.
 
@@ -469,7 +475,7 @@ Persistent_Storage = {
 - Custom splitters can use custom dataframe logic to select the samples
 
 
-```{.python code-line-numbers="|1-2|6-9|10-13|"}
+```{.python code-line-numbers="|1-2|5|6-9|10-13|"}
 class Splitter:
     def split(self, X, y=None):
         ...
@@ -503,7 +509,8 @@ We want to model player behavior by measuring statistics about **playing session
 - How long do the sessions last? 
 - Does the player have a consistent schedule?
 
-`skrub.SessionEncoder` turns heartbeats into **sessions**
+[`skrub.SessionEncoder`](https://skrub-data.org/dev/reference/generated/skrub.SessionEncoder.html)
+turns heartbeats into **sessions**
 
 ## From sessions to one row {.smaller}
 

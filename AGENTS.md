@@ -61,6 +61,12 @@ treated as a project dependency.
   cell must actually re-execute.
 - `skrub-dataops.qmd` is a RevealJS slide deck;
   `draft.qmd` and `skrub-dataops.qmd` are the write-ups of record.
+- The deck's progress bar is not reveal's own: `progress: false` turns that off
+  and `progress-sections.html` (included via `include-after-body`) draws one
+  segment per level-1 heading, sized by the number of slides in the section and
+  filled as the talk advances. Segments are clickable and jump to the start of
+  their section. Adding or removing a `# Heading` needs no change to the script;
+  the styling lives at the end of `style.css`.
 - `index.qmd` is the landing page: it links to the blog post and the slides.
   The navbar in `_quarto.yml` mirrors those links.
 - The blog post is a series. `draft.qmd` is the index and each part is a
