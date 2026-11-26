@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.11.9">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Part 4 · Location features, and whether they earn their place – WoWAH Player Churn Prediction</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/scrollable-regions/scrollable-regions.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-5de16f5e46225c21e2daa90d340bf64f.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-3218d7d29a29f08bc4fdf3802c3e3ca5.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-5de16f5e46225c21e2daa90d340bf64f.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-a9f5adb621b19510612810e905b025c8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-a9f5adb621b19510612810e905b025c8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-a9f5adb621b19510612810e905b025c8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-chtml.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="../style.css">
+</head>
+
+<body class="nav-fixed quarto-light"><a id="quarto-skip-link" class="visually-hidden-focusable" href="#quarto-document-content">Skip to main content</a>
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark" aria-label="Site">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">WoWAH Churn Prediction</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../draft.html"> 
+<span class="menu-text">Blog post</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../skrub-dataops.html"> 
+<span class="menu-text">Slides</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+            <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" aria-labelledby="toc-title" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#where-characters-spend-their-time" id="toc-where-characters-spend-their-time" class="nav-link active" data-scroll-target="#where-characters-spend-their-time"><span class="header-section-number">1</span> Where characters spend their time</a>
+  <ul class="collapse">
+  <li><a href="#sessionizing-over-character-and-zone" id="toc-sessionizing-over-character-and-zone" class="nav-link" data-scroll-target="#sessionizing-over-character-and-zone"><span class="header-section-number">1.1</span> Sessionizing over character and zone</a></li>
+  <li><a href="#rarity-how-special-is-a-zone" id="toc-rarity-how-special-is-a-zone" class="nav-link" data-scroll-target="#rarity-how-special-is-a-zone"><span class="header-section-number">1.2</span> Rarity: how special is a zone</a></li>
+  <li><a href="#per-character-aggregates" id="toc-per-character-aggregates" class="nav-link" data-scroll-target="#per-character-aggregates"><span class="header-section-number">1.3</span> Per-character aggregates</a></li>
+  <li><a href="#gini-concentrated-or-spread-out" id="toc-gini-concentrated-or-spread-out" class="nav-link" data-scroll-target="#gini-concentrated-or-spread-out"><span class="header-section-number">1.4</span> Gini: concentrated or spread out</a></li>
+  <li><a href="#the-whole-picture" id="toc-the-whole-picture" class="nav-link" data-scroll-target="#the-whole-picture"><span class="header-section-number">1.5</span> The whole picture</a></li>
+  <li><a href="#does-the-block-earn-its-place" id="toc-does-the-block-earn-its-place" class="nav-link" data-scroll-target="#does-the-block-earn-its-place"><span class="header-section-number">1.6</span> Does the block earn its place?</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/skrub-data/wowah-sessionization/blob/main/posts/04-location.qmd" class="toc-action"><i class="bi bi-github"></i>View source</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content" tabindex="-1">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Part 4 · Location features, and whether they earn their place</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="where-characters-spend-their-time" class="level2" data-number="1">
+<h2 data-number="1" class="anchored" data-anchor-id="where-characters-spend-their-time"><span class="header-section-number">1</span> Where characters spend their time</h2>
+<p>The previous section on sessionization modeled <em>when</em> a character is online, and their general time-specific behavior. This section focuses on answering <em>where</em> a character spends their time, as character location should be a signal of whether they are a dedicated player (focusing on late-game areas), or someone less committed to the game.</p>
+<p>While generating these features originally appeared to be a promising direction, experimental results seem to show little to no impact on the actual prediction performance (see <a href="#does-the-block-earn-its-place">Does the block earn its place?</a>). We keep the investigation for historical reasons, and to showcase a different application of the <code>SessionEncoder</code>.</p>
+<section id="sessionizing-over-character-and-zone" class="level3" data-number="1.1">
+<h3 data-number="1.1" class="anchored" data-anchor-id="sessionizing-over-character-and-zone"><span class="header-section-number">1.1</span> Sessionizing over character and zone</h3>
+<p>To generate the features, we use again the <code>SessionEncoder</code>, split on <code>(char, zone)</code> instead of <code>char</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>session_encoder_zone <span class="op">=</span> SessionEncoder(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    split_by<span class="op">=</span>[<span class="st">"char"</span>, <span class="st">"zone"</span>],</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    timestamp_col<span class="op">=</span><span class="st">"timestamp"</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    session_gap<span class="op">=</span>session_gap <span class="op">*</span> <span class="dv">60</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    suffix<span class="op">=</span><span class="st">"session_id_zone"</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>A “zone session” is the interval between the first heartbeat in a zone, to the last one before they are seen somewhere else: this is a <strong>visit</strong>, not a play session. The two session IDs are independent and touch different columns, and a character’s sessions do not change whether or not the location features are enabled: this means that <code>use_location</code> can be a plain <a href="https://skrub-data.org/stable/reference/generated/skrub.choose_bool.html"><code>choose_bool</code></a>.</p>
+<p>Visits are much shorter than play sessions, because players move around inside a session. In March 2008, we measure ~385k zone sessions for 109k play sessions, and 49% of the visits consist of a single heartbeat.</p>
+<p>This is a sample of Character 66560’s session data for March 2008, where the 10 hours cover 30 visits over 6 zones:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>zone</th>
+<th style="text-align: center;">visits</th>
+<th>time in zone</th>
+<th style="text-align: right;">rarity</th>
+<th style="text-align: center;">hub?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Wailing Caverns</td>
+<td style="text-align: center;">2</td>
+<td>1h 09m 59s</td>
+<td style="text-align: right;">3.19</td>
+<td style="text-align: center;">no</td>
+</tr>
+<tr class="even">
+<td>Warsong Gulch</td>
+<td style="text-align: center;">5</td>
+<td>30m 00s</td>
+<td style="text-align: right;">1.87</td>
+<td style="text-align: center;">no</td>
+</tr>
+<tr class="odd">
+<td>Stranglethorn Vale</td>
+<td style="text-align: center;">1</td>
+<td>20m 10s</td>
+<td style="text-align: right;">1.91</td>
+<td style="text-align: center;">no</td>
+</tr>
+<tr class="even">
+<td>The Barrens</td>
+<td style="text-align: center;">9</td>
+<td>10m 05s</td>
+<td style="text-align: right;">1.43</td>
+<td style="text-align: center;">yes</td>
+</tr>
+<tr class="odd">
+<td>Thunder Bluff</td>
+<td style="text-align: center;">1</td>
+<td>10m 01s</td>
+<td style="text-align: right;">1.71</td>
+<td style="text-align: center;">no</td>
+</tr>
+<tr class="even">
+<td>Orgrimmar</td>
+<td style="text-align: center;">12</td>
+<td>1m 00s</td>
+<td style="text-align: right;">0.66</td>
+<td style="text-align: center;">yes</td>
+</tr>
+</tbody>
+</table>
+<p>To note that since this is periodic polling of the data, session durations have some caveats. Given that a visit is measured from the first to the last hearbeat in a given zone, the ten minutes between one zone and another belong to neither. Additionally, a player may move between multiple zones between two polls and that would not be detected by the dataset.</p>
+</section>
+<section id="rarity-how-special-is-a-zone" class="level3" data-number="1.2">
+<h3 data-number="1.2" class="anchored" data-anchor-id="rarity-how-special-is-a-zone"><span class="header-section-number">1.2</span> Rarity: how special is a zone</h3>
+<p>The first thing worth knowing about a zone is how many people go there. Rarity is <span class="math inline">\(r_v = \log(N / n_v)\)</span>, where <span class="math inline">\(N\)</span> is the number of characters in the month and <span class="math inline">\(n_v\)</span> the number that visited the zone:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>rarity<span class="op">=</span>(n_unique_characters <span class="op">/</span> pl.col(<span class="st">"unique_visitors"</span>)).log()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>In March 2008 there are ~8,4k characters across 122 zones, and the scale runs from Orgrimmar at 0.66 (the Horde capital, and the single busiest place in the data) to 9.04 for the zones with exactly one visitor.</p>
+<p>High rarity means “almost nobody comes here”, and at the top of the scale it usually means a recording glitch rather than a discovery. Rarity measures the data, not the world, and the rarest observations are the ones most worth distrusting.</p>
+<p>The bottom decile of that scale marks the <strong>hubs</strong>: any zone with rarity below the 10th percentile — 1.65 in this month — is a place where everyone goes. That is 12 of the 122 zones, and they are the capitals plus the level 60–70 questing corridors:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>zone</th>
+<th style="text-align: right;">visitors</th>
+<th style="text-align: right;">rarity</th>
+<th style="text-align: right;">avg. level there</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Orgrimmar</td>
+<td style="text-align: right;">4,370</td>
+<td style="text-align: right;">0.66</td>
+<td style="text-align: right;">60.1</td>
+</tr>
+<tr class="even">
+<td>Shattrath City</td>
+<td style="text-align: right;">2,748</td>
+<td style="text-align: right;">1.12</td>
+<td style="text-align: right;">69.6</td>
+</tr>
+<tr class="odd">
+<td>Undercity</td>
+<td style="text-align: right;">2,245</td>
+<td style="text-align: right;">1.32</td>
+<td style="text-align: right;">45.3</td>
+</tr>
+<tr class="even">
+<td>Terokkar Forest</td>
+<td style="text-align: right;">2,088</td>
+<td style="text-align: right;">1.40</td>
+<td style="text-align: right;">68.6</td>
+</tr>
+<tr class="odd">
+<td>Hellfire Peninsula</td>
+<td style="text-align: right;">2,058</td>
+<td style="text-align: right;">1.41</td>
+<td style="text-align: right;">64.5</td>
+</tr>
+<tr class="even">
+<td>Durotar</td>
+<td style="text-align: right;">2,049</td>
+<td style="text-align: right;">1.41</td>
+<td style="text-align: right;">23.7</td>
+</tr>
+<tr class="odd">
+<td>Zangarmarsh</td>
+<td style="text-align: right;">2,027</td>
+<td style="text-align: right;">1.43</td>
+<td style="text-align: right;">66.8</td>
+</tr>
+<tr class="even">
+<td>The Barrens</td>
+<td style="text-align: right;">2,012</td>
+<td style="text-align: right;">1.43</td>
+<td style="text-align: right;">28.9</td>
+</tr>
+</tbody>
+</table>
+<p>Note that a hub is not a “max-level zone”: Durotar and the Barrens are starting areas with average levels under 30, so they are hubs only because they are <em>crowded</em>. The list of “hubs” mixes two reasons why a zone is busy: either, hubs are where players trade, or it’s where they spend time at level cap. For this reason, the time spent in hubs is a weaker signal on its own than the time spent out of them.</p>
+</section>
+<section id="per-character-aggregates" class="level3" data-number="1.3">
+<h3 data-number="1.3" class="anchored" data-anchor-id="per-character-aggregates"><span class="header-section-number">1.3</span> Per-character aggregates</h3>
+<p><code>add_player_rarity</code> reduces a character’s visits to six numbers:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>df.lazy().select(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    pl.col(<span class="st">"char"</span>),</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    rarity.<span class="bu">max</span>().over(<span class="st">"char"</span>).alias(<span class="st">"max_rarity"</span>),</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    rarity.mean().over(<span class="st">"char"</span>).alias(<span class="st">"mean_rarity"</span>),</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    (is_hub.<span class="bu">sum</span>().over(<span class="st">"char"</span>) <span class="op">/</span> is_hub.count().over(<span class="st">"char"</span>)).alias(<span class="st">"in_hub"</span>),</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    zone_level.<span class="bu">max</span>().over(<span class="st">"char"</span>).alias(<span class="st">"max_zone_level"</span>),</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    zone_level.mean().over(<span class="st">"char"</span>).alias(<span class="st">"mean_zone_level"</span>),</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    (zone_level.ge(<span class="dv">60</span>).<span class="bu">sum</span>().over(<span class="st">"char"</span>) <span class="op">/</span> zone_level.count().over(<span class="st">"char"</span>)).alias(</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>        <span class="st">"frac_endgame"</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>).unique(<span class="st">"char"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>For character 66560 in March:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 27%">
+<col style="width: 34%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>feature</th>
+<th>value</th>
+<th>reads as</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>max_rarity</code></td>
+<td>3.19</td>
+<td>the rarest place they went was Wailing Caverns</td>
+</tr>
+<tr class="even">
+<td><code>mean_rarity</code></td>
+<td>1.55</td>
+<td>on average, a fairly ordinary zone</td>
+</tr>
+<tr class="odd">
+<td><code>in_hub</code></td>
+<td>0.63</td>
+<td>63% of their visits were to a hub</td>
+</tr>
+<tr class="even">
+<td><code>max_zone_level</code></td>
+<td>68.5</td>
+<td>the highest-level content they touched was near cap</td>
+</tr>
+<tr class="odd">
+<td><code>mean_zone_level</code></td>
+<td>47.1</td>
+<td>on average, mid-level content</td>
+</tr>
+<tr class="even">
+<td><code>frac_endgame</code></td>
+<td>0.46</td>
+<td>46% of their visits were to zones averaging level 60+</td>
+</tr>
+</tbody>
+</table>
+<p><code>max_rarity</code> is the one that carries level information: a character whose rarest visit is a level-70 raid has clearly progressed further than one who never left the starting zones. <code>in_hub</code> is meant to capture the opposite — how much of the month was spent idling in a capital rather than out in the world. <code>in_hub</code>, <code>*_zone_level</code> and <code>frac_endgame</code> measure the <em>content</em> a player is doing, rather than their progress.</p>
+<p>The aggregates are taken with <code>.over("char")</code> on the <strong>heartbeat</strong> table, not on the visit table, so each number is a mean over heartbeats. Since polls arrive every ten minutes, that is very nearly a time average, but not exactly: a visit is truncated at its last heartbeat, so a two-heartbeat visit contributes two rows to a two-hour one’s twelve. For character 66560 the three possible weightings give heartbeats 0.63, visits 0.70, minutes 0.60 — the same story with a different resolution. <code>mean_rarity</code> moves with it, from 1.55 over heartbeats to 1.66 over minutes, because the long visit (Wailing Caverns, 1h 30m, rarity 3.19) gets more weight than its eleven heartbeats suggest.</p>
+</section>
+<section id="gini-concentrated-or-spread-out" class="level3" data-number="1.4">
+<h3 data-number="1.4" class="anchored" data-anchor-id="gini-concentrated-or-spread-out"><span class="header-section-number">1.4</span> Gini: concentrated or spread out</h3>
+<p>The last block answers a different question: not <em>where</em>, but <em>how evenly</em>. The Gini coefficient over the time a character spent in each zone is 0 when the time is split perfectly equally and approaches 1 when all of it is in one place. Low values describe an explorer moving between many zones; high values describe a character parked in one spot, grinding.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>gini <span class="op">=</span> (n <span class="op">+</span> <span class="dv">1</span> <span class="op">-</span> <span class="dv">2</span> <span class="op">*</span> pl.col(<span class="st">"cumulative"</span>).<span class="bu">sum</span>() <span class="op">/</span> pl.col(<span class="st">"cumulative"</span>).last()) <span class="op">/</span> n</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Two details matter for reading the number. First, hub zones are dropped before the coefficient is computed (<code>get_location_gini(..., with_hub=False)</code>), on the grounds that everyone passes through a capital and it says nothing about play style — so a character who only ever sat in Orgrimmar is not “infinitely concentrated”, they are simply not measured. Second, the coefficient is computed per character over the whole month, not per play session, so it describes the month’s geography rather than any single evening.</p>
+<p>Measured on March 2008 over the 5,251 characters that get a coefficient, the distribution is bimodal: the median is 0.61, the upper quartile 0.75, and 30% sit exactly at 0 — of whom all but 72 visited a single non-hub zone in the entire month, which makes the coefficient degenerate rather than informative. A further 3,178 characters (37.7% of the month) never left a hub zone at all and get no coefficient, so the left join leaves <code>gini</code> null for them. Between the two, only 62% of the month’s characters have a Gini value that means anything.</p>
+<p><strong>This column is no longer used.</strong> It is still in the code, but <code>make_data_op</code> now passes <code>add_gini=False</code>. The reason is that the coefficient is mostly a proxy for how many zones a character visited: it is bounded above by <span class="math inline">\((n-1)/n\)</span>, so it rises mechanically with <span class="math inline">\(n\)</span>, and the correlation between the two is 0.73. Within zone-count strata it is at chance — for characters who visited exactly two non-hub zones the AUC against churn is 0.487, for three it is 0.494 — and it adds nothing to a model that already knows the zone count. It also cost 1.50 s of the 1.65 s location block, because the coefficient has to run through <code>map_groups</code>, one Python call per character, which is where polars stops being able to vectorise.</p>
+</section>
+<section id="the-whole-picture" class="level3" data-number="1.5">
+<h3 data-number="1.5" class="anchored" data-anchor-id="the-whole-picture"><span class="header-section-number">1.5</span> The whole picture</h3>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../images/zone_rarity.png" class="img-fluid quarto-figure quarto-figure-center figure-img"></p>
+</figure>
+</div>
+<p>On the left, every zone in March 2008 by visitors (log scale) and rarity, with the hub threshold drawn in: the relationship is a clean straight line because rarity <em>is</em> a function of the visitor count, and the hubs are simply the right end of it. On the right, the distribution of per-character Gini, with the spike at 0 standing for the characters who stayed in one non-hub zone all month.</p>
+</section>
+<section id="does-the-block-earn-its-place" class="level3" data-number="1.6">
+<h3 data-number="1.6" class="anchored" data-anchor-id="does-the-block-earn-its-place"><span class="header-section-number">1.6</span> Does the block earn its place?</h3>
+<p>Not measurably. Evaluated with the pipeline’s own <code>Splitter</code> — an expanding window that trains on every month up to <code>split_point − 1</code> and tests at <code>split_point + 1</code>, with the gap month dropped because its target needs the test month’s data — the block is indistinguishable from noise. Over the eleven 2008 splits, averaged across three 10% character samples:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>location features</th>
+<th style="text-align: right;">mean ΔAUC</th>
+<th style="text-align: right;">wins</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>gini</code> alone</td>
+<td style="text-align: right;">−0.0003</td>
+<td style="text-align: right;">17/33</td>
+</tr>
+<tr class="even">
+<td>the three rarity columns alone</td>
+<td style="text-align: right;">+0.0006</td>
+<td style="text-align: right;">17/33</td>
+</tr>
+<tr class="odd">
+<td>rarity + <code>gini</code></td>
+<td style="text-align: right;">−0.0004</td>
+<td style="text-align: right;">16/33</td>
+</tr>
+<tr class="even">
+<td>rarity + zone level (six columns, as shipped now)</td>
+<td style="text-align: right;">−0.0001</td>
+<td style="text-align: right;">19/33</td>
+</tr>
+<tr class="odd">
+<td>rarity + zone level + <code>gini</code></td>
+<td style="text-align: right;">+0.0004</td>
+<td style="text-align: right;">18/33</td>
+</tr>
+</tbody>
+</table>
+<p>Every variant lands within ±0.001 of the same model without the block, and every variant wins roughly half its splits. The per-split spread is an order of magnitude larger than the mean: individual splits move by up to ±0.010 in either direction. That is the honest reading — the location block neither helps nor hurts, and the earlier claim that it was a consistent +0.0085 gain does not survive a faithful re-run.</p>
+<p>The Gini row is the direct answer to whether it should stay: on its own it is indistinguishable from noise, and adding it to the six-column block does not change that. It is not that the coefficient is useless in principle — it is that whatever it measures is already covered by the zone count and the zone-level columns, and the extra column only gives the model another noisy axis to split on.</p>
+<p>This block is also by far the most expensive part of the feature table, which is why it is a choice at all. On March 2008 (8,429 characters, 1.22M heartbeats), the general feature functions (sessions, monthly player aggregates, class aggregates) take about 0.2 s, while the zone pass takes 0.21 s to encode and 0.16 s to turn into features. Dropping the Gini is what makes it cheap: with <code>add_gini=True</code> the same step takes 1.65 s instead of 0.16 s, a tenfold difference.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>use_location <span class="op">=</span> skrub.choose_bool(name<span class="op">=</span><span class="st">"location_features"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The next part assembles everything built so far into a single skrub Data Op and runs it.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/skrub-data\.org\/wowah-sessionization\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+      window.quartoDecorateExternalLinks = function (root) {
+     var links = (root || window.document).querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+          if (!link.classList.contains('no-external-icon')) {
+          }
+        }
+      }
+      };
+      window.quartoDecorateExternalLinks(window.document);
+    // Esc closes the popup (WCAG 1.4.13) and focus leaving both trigger and
+    // popup closes it (WCAG 2.4.11); tippy handles neither for interactive popups.
+    const hideOnEscAndFocusOut = {
+      name: 'hideOnEscAndFocusOut',
+      defaultValue: true,
+      fn(instance) {
+        const dismiss = () => {
+          // A show scheduled by the trigger delay would otherwise reopen it
+          instance.clearDelayTimeouts();
+          instance.hide();
+        };
+        const onKeyDown = (event) => {
+          if (event.key !== 'Escape') {
+            return;
+          }
+          // Keep Esc from also reaching page handlers (e.g. reveal.js overview),
+          // except an open reveal.js slide menu, which Esc should close too.
+          // The menu handles keys only when its keyboard option is on.
+          const menuHandlesEsc = window.Reveal?.getPlugin?.('menu')?.isOpen() &&
+            window.Reveal.getConfig().menu?.keyboard !== false;
+          if (!menuHandlesEsc) {
+            event.stopPropagation();
+          }
+          if (instance.popper.contains(window.document.activeElement)) {
+            // Disabled while refocusing so the focus trigger does not reopen it
+            instance.disable();
+            instance.reference.focus();
+            instance.enable();
+          }
+          dismiss();
+        };
+        const onFocusOut = (event) => {
+          const target = event.relatedTarget;
+          if (target && !instance.reference.contains(target) &&
+              !instance.popper.contains(target)) {
+            dismiss();
+          }
+        };
+        // On the trigger too: a click trigger (code-annotations: select) has no
+        // blur handling. Attached for the instance's lifetime so leaving the
+        // trigger also cancels a show still pending on the trigger delay.
+        instance.reference.addEventListener('focusout', onFocusOut);
+        return {
+          onShow() {
+            window.document.addEventListener('keydown', onKeyDown, true);
+            instance.popper.addEventListener('focusout', onFocusOut);
+          },
+          onHide() {
+            window.document.removeEventListener('keydown', onKeyDown, true);
+            instance.popper.removeEventListener('focusout', onFocusOut);
+          },
+          onDestroy() {
+            instance.reference.removeEventListener('focusout', onFocusOut);
+          },
+        };
+      },
+    };
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+        plugins: [hideOnEscAndFocusOut],
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          // Each band is positioned against its own containing block, which is
+          // not the offsetParent of the lines, so place it from client rects.
+          const placeBand = (band, firstEl, lastEl, codeBlock) => {
+            const container = band.offsetParent;
+            if (container === null) {
+              return;
+            }
+            const containerRect = container.getBoundingClientRect();
+            // Reveal.js scales slides with a transform, so convert client
+            // pixels back to the CSS pixels of the container.
+            const scale = containerRect.height / container.offsetHeight || 1;
+            const firstRect = firstEl.getBoundingClientRect();
+            const lastRect = lastEl.getBoundingClientRect();
+            const top = (firstRect.top - containerRect.top) / scale - container.clientTop + container.scrollTop;
+            const height = (lastRect.bottom - firstRect.top) / scale;
+            band.style.top = top - 2 + "px";
+            band.style.height = height + 4 + "px";
+            if (codeBlock) {
+              // Without the copy button wrapper, the containing block is wider
+              // than the code block, so span the code block explicitly.
+              const blockRect = codeBlock.getBoundingClientRect();
+              band.style.left = (blockRect.left - containerRect.left) / scale - container.clientLeft + container.scrollLeft + "px";
+              band.style.width = blockRect.width / scale + "px";
+            }
+          };
+          if (lineIds.length > 0) {
+            const el = window.document.getElementById(lineIds[0]);
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const parent = el.parentElement.parentElement;
+            // cook up a div (if necessary) and position it
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            placeBand(div, el, lastEl, parent.closest("div.sourceCode") || parent);
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            placeBand(gutterDiv, el, lastEl);
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+  <script type="application/javascript">
+  window.quartoScrollableRegionsLabels = {"code":"Scrollable code","output":"Scrollable output"};
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/skrub-data/wowah-sessionization/blob/main/posts/04-location.qmd" class="toc-action"><i class="bi bi-github"></i>View source</a></li></ul></div></div></div></footer><script src="../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>

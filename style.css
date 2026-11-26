@@ -1,0 +1,199 @@
+.emph {
+  color: #1a5a8a;
+  font-weight: bold;
+}
+
+/* Title slide: at the default 100px the title wraps to three lines and pushes
+   the logo past the bottom of the slide. 90px keeps it on two lines. */
+#title-slide h1.title {
+  font-size: 90px;
+}
+
+/* The site link is the subtitle on the title slide and the running footer on
+   every other slide, so hide the duplicated footer there. Quarto's support
+   plugin sets display inline, hence the !important. */
+.reveal:has(#title-slide.present) > .footer.footer-default {
+  display: none !important;
+}
+
+#title-slide .title-logos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+#title-slide .title-logo {
+  height: 8rem;
+}
+
+/* The probabl mark is a solid shape, so it reads heavier than the skrub
+   splash at the same height. */
+#title-slide .title-logo[alt="probabl"] {
+  height: 6rem;
+}
+
+/* The Inria mark is a wide wordmark, so it is sized by width instead. */
+#title-slide .title-logo[alt="inria"] {
+  height: auto;
+  width: 10rem;
+}
+
+/* Highlighted line(s) shown by code-line-numbers steps */
+.reveal pre.numberSource code > span.highlight-line {
+  background-color: rgba(26, 90, 138, 0.15);
+  box-shadow: inset 3px 0 0 #1a5a8a;
+}
+
+/* Make the dimmed lines even more muted */
+.reveal div.sourceCode pre code.has-line-highlights > span:not(.highlight-line) {
+  opacity: 0.35;
+}
+
+/* Graph revealed node by node, in step with the code-line highlights.
+   scripts/make_model_graph.py writes model_graph_1.svg ... _5.svg from the
+   "Declare the pipeline" block in skrub-dataops.qmd. */
+.reveal .graph-reveal {
+  position: relative;
+  width: 100%;
+  max-width: 278pt;
+  aspect-ratio: 278 / 288;
+  margin: 0;
+}
+
+.reveal .graph-reveal img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.reveal .graph-reveal .g-step {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+/* The first code step is the un-cloned block inside the .decl-pipeline
+   fragment. Quarto's line-highlight plugin clones that <code> block once per
+   step and appends the clones as sibling <code> elements, so match them by
+   position instead of by line number: 2 is the second step, and so on.
+   That way editing the code block's line numbers cannot desynchronise the
+   graph. */
+.reveal section:has(.decl-pipeline.visible) .graph-reveal .g-step-1,
+.reveal section:has(.decl-pipeline pre > code:nth-of-type(2).visible) .graph-reveal .g-step-2,
+.reveal section:has(.decl-pipeline pre > code:nth-of-type(3).visible) .graph-reveal .g-step-3,
+.reveal section:has(.decl-pipeline pre > code:nth-of-type(4).visible) .graph-reveal .g-step-4,
+.reveal section:has(.decl-pipeline pre > code:nth-of-type(5).visible) .graph-reveal .g-step-5 {
+  opacity: 1;
+}
+
+/* Print/PDF export with pdfSeparateFragments: false skips the fragment clones,
+   so fall back to the complete graph instead of a blank column. */
+@media print {
+  .reveal .graph-reveal .g-step-5 {
+    opacity: 1;
+  }
+}
+
+/* Segmented progress bar (progress-sections.html).
+   Reveal's own bar is a 3px line that is invisible from the back of a room and
+   says nothing about the structure of the talk. This one is thicker, and is
+   split into one segment per act, sized by the number of slides in the act. */
+.reveal .progress-sections {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  gap: 5px;
+  height: 14px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.reveal .progress-sections .segment {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  background-color: rgba(18, 19, 75, 0.12);
+  border-radius: 2px 2px 0 0;
+  transition: background-color 0.3s ease;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.reveal .progress-sections .segment:hover {
+  background-color: rgba(18, 19, 75, 0.28);
+}
+
+.reveal .progress-sections .segment.active {
+  background-color: rgba(18, 19, 75, 0.22);
+}
+
+.reveal .progress-sections .segment-fill {
+  height: 100%;
+  width: 100%;
+  background-color: #f89939;
+  transform: scaleX(0);
+  transform-origin: 0 0;
+  transition: transform 0.45s cubic-bezier(0.26, 0.86, 0.44, 0.985);
+}
+
+/* Name of the act the current slide belongs to, left of the slide number.
+   `bottom` is chosen so its text sits on the slide number's baseline. */
+.reveal .progress-sections-label {
+  position: absolute;
+  right: 78px;
+  bottom: 26px;
+  z-index: 20;
+  max-width: 40%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 1;
+  color: rgba(18, 19, 75, 0.5);
+  pointer-events: none;
+}
+
+/* Keep the slide number, footer and menu button clear of the thicker bar.
+   These need extra specificity: Quarto's footer.css and quarto-menu.css are
+   loaded after style.css and set the same properties. */
+.reveal .slide-number.slide-number {
+  bottom: 20px;
+}
+
+.reveal .footer.footer {
+  bottom: 28px;
+}
+
+.reveal .slide-menu-button.slide-menu-button {
+  bottom: 22px;
+}
+
+/* The bar is a screen-only affordance, like reveal's own progress bar. */
+@media print {
+  .reveal .progress-sections,
+  .reveal .progress-sections-label {
+    display: none !important;
+  }
+}
+
+.reveal.overview .progress-sections,
+.reveal.overview .progress-sections-label {
+  opacity: 0;
+}
+
+/* On a narrow window the act name would run into the centred footer. */
+@media screen and (max-width: 800px) {
+  .reveal .progress-sections-label {
+    display: none;
+  }
+}
+
+
