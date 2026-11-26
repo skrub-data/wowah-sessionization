@@ -17,10 +17,23 @@ slide-number: true
 template-partials:
     - title-slide.html
 ---
-## `whoami`
+## `whoami` {.smaller}
+
+
+
+::: {.columns}
+
+::: {.column}
+
+
+::: {.fragment}
+
 
 - Product engineer at Probabl for the past month
 - Before that, research engineer at Inria developing skrub
+
+
+:::
 
 
 ::: {.fragment}
@@ -33,6 +46,18 @@ the sea and the sun.
 :::
 
 
+:::
+
+::: {.column}
+
+![Website with slides and writeup](images/qr-code-website.png)
+
+:::
+
+:::
+
+
+
 
 ## Skrub {.smaller}
 
@@ -41,11 +66,6 @@ Machine learning on tabular data
 ![](images/table_vectorizer.png){width="70%" style="margin-bottom: -1rem;" fig-align="center"}
 
 ![](images/tabular_pipeline.png){width="60%" style="margin-bottom: -1rem;" fig-align="center"}
-
-::: {.fragment}
-- [skrub-data.org](https://skrub-data.org)
-- This talk: the [skrub DataOps](https://skrub-data.org/stable/data_ops.html) framework.
-:::
 
 ## Roadmap for the presentation
 
@@ -58,6 +78,8 @@ Machine learning on tabular data
 
 Libraries are even more important in the era of agents 🤖
 
+![](images/execution.jpg){height=60% fig-align="center"}
+
 :::
 
 
@@ -65,7 +87,7 @@ Libraries are even more important in the era of agents 🤖
 # Act 1: skrub Data Ops
 
 
-## {.smaller}
+##
 
 :::: {.columns}
 
@@ -115,7 +137,7 @@ estimator.predict(X_new)</code></pre>
 
 ::::
 
-## {.smaller}
+##
 
 :::: {.columns}
 
@@ -149,7 +171,7 @@ estimator.predict(X_new)</code></pre>
 
 ::::
 
-## {.smaller}
+##
 
 :::: {.columns}
 
@@ -754,7 +776,10 @@ do.groupby("region")["revenue"].agg(skrub.choose_from(["mean", "sum", "max"]))
 
 ::: {.incremental}
 
-- Model choices are not limited to model hyperparameters: `session_gap` (30/45/60 min), include location features?, which lags?
+- Model choices are not limited to model hyperparameters: 
+    - session_gap` (30/45/60 min) 
+    - include location features?
+    - which lags?
 - These are [**data pipeline decisions**]{.emph}, with big performance and runtime impact
 - Pipeline decisions [**modify the pipeline itself**]{.emph}, and regular hyperparameter tuning does not work
 
@@ -784,7 +809,7 @@ do.groupby("region")["revenue"].agg(skrub.choose_from(["mean", "sum", "max"]))
 
 - One call to `skb.make_randomized_search(backend="optuna", ...)` turns the whole DAG into a search 
 - skrub integrates and [**calls Optuna**]{.emph} directly
-- Then, use the [**Optuna dashboard**]{.emph} to navigate the results
+- Then, use the [**Optuna dashboard**]{.emph}(http://127.0.0.1:8080/dashboard/?studies_order_by=desc) to navigate the results
 
 :::
 
